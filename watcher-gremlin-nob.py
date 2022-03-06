@@ -1,244 +1,276 @@
 import random
 import math
 import queue
+from enum import Enum
+from itertools import product
+from itertools import permutations
 
-DRAW = [i for i in range(10)]
-r = random.Random()
-r.shuffle(DRAW)
-print(DRAW)
 
-################# END OF DECK AND STATE CLASS #################
-class CardSet:
-    def __init__(self, S, D, E, V, A):
-        self.S = S
-        self.D = D
-        self.E = E
-        self.V = V
-        self.A = A
+#   NEW PLAN
+#   Global manager:
+#       turn, deck shuffle permutation
+#       list of all queues
+#   Current queues, next sets:
+#       1 queue for each combination of:
+#           current CardPositions (draw/hand/discard), 
+#           WatcherState (stance, hasMiracle), 
+#           and gnBuff
+#           this is enough to compute how a sequence of card plays affects...
+#               CardPositions, WatcherState, and CombatState
+#       queue entries are current CombatStates (pHP, gnHP, gnBuff)
+#       
+#       1 set for each combination of:
+#           next turn CardPositions, stance
+#
+#       process a queue at a time:
+#           list possible moves
+#           for each possible move, hash the following:
+#               CardPositions for next turn, 
+#               WatcherState for next turn, and 
+#               change to CombatState
 
-class State:
-    def __init__(self, pHP, gnHP, M = True, stance = 'N', energy = 3, block = 0, turn = 1, nbuff = 0, cardSets = None):
-        if cardSets == None:
-            self.draw = CardSet(4, 4, 1, 1, 1)
-            self.hand = CardSet(0, 0, 0, 0, 0)
-            self.discard = CardSet(0, 0, 0, 0, 0)
+#           for each queue entry:
+#               apply each possible move
+#               try to add the result to the corresponding set
+#               within this set, CardPositions and stances are all the same
+#               compare CombatState and hasMiracle
+#           
+#       populate new queues from the sets that resulted, repeat    
+
+#   CombatState:
+#       (pHP, gnHP, gnBuff)
+#   CardPositions:
+#       (draw, hand, discard)
+#   WatcherState:
+#       (stance, hasMiracle)
+
+#################  #################
+class Card(Enum):
+    NONE = 0
+    STRIKE = 1
+    DEFEND = 2
+    ERUPTION = 3
+    VIGILANCE = 4
+    ASCENDERS_BANE = 5
+
+START_DECK = tuple([Card.STRIKE, Card.DEFEND]*5+[Card.ERUPTION, Card.VIGILANCE, Card.ASCENDERS_BANE])
+        
+
+class CardPositions:
+    def __init__(self, draw = [], hand = [], discard = []):
+        self.draw = tuple(draw)
+        self.hand = tuple(hand)
+        self.discard = tuple(discard)
+    
+    # apply a permutation to get the next hand
+    # length of sigma assumed to equal self.discard
+    def nextPositions(self, sigma):
+        newDraw = list(self.draw)
+        if len(self.draw) < 5:
+            newDraw += [self.discard[sigma[i]] for i in range(len(self.discard))]
+            newDiscard = []
         else:
-            self.draw = (cardSets[0].S,cardSets[0].D,cardSets[0].E,cardSets[0].V,cardSets[0].A)
-            self.hand = (cardSets[1].S,cardSets[1].D,cardSets[1].E,cardSets[1].V,cardSets[1].A)
-            self.discard = (cardSets[2].S,cardSets[2].D,cardSets[2].E,cardSets[2].V,cardSets[2].A)
-        
-        self.M = M
-        self.stance = stance
-        self.energy = energy
-        self.block = block
-        self.turn = turn
-        self.nbuff = nbuff
-        
+            newDiscard = self.discard
+        newHand = newDraw[:5]
+        newDraw = newDraw[5:]
+        return CardPositions(newDraw, newHand, newDiscard)
+
+class CombatState:
+    def __init__(self, pHP = 61, gnHP = 106, gnBuff = 0):
         self.pHP = pHP
         self.gnHP = gnHP
-        
-    
-    def plays(self):
-        out = ''
-        if self.energy:
-            # can play Strike & Defend w/o Miracle
-            if self.hand.S:
-                out += 'S'
-            if self.hand.D:
-                out += 'D'
-            if self.energy > 1:
-                # can play Eruption & Vigilance w/o Miracle
-                if self.hand.E:
-                    out += 'E'
-                if self.hand.V:
-                    out += 'V'
-            elif self.M:
-                # needs Miracle to play Eruption & Vigilance
-                if self.hand.E:
-                    out += 'e'
-                if self.hand.V:
-                    out += 'v'
-        elif self.M:
-            # needs Miracle to play Eruption & Vigilance
-            if self.hand.S:
-                out += 's'
-            if self.hand.D:
-                out += 'd'
-        return out
-    
-    def show(self):
-        out = 'HP: (' + str(self.pHP) + ',' + str(self.gnHP) + '), stance = ' + self.stance
-        if self.M:
-            out += ', hand: M'
-        else:
-            out += ', hand: '
-        out += self.hand.S*'S'
-        out += self.hand.D*'D'
-        out += self.hand.E*'E'
-        out += self.hand.V*'V'
-        out += self.hand.A*'A'
-        
-        out += ', draw: '
-        out += self.draw.S*'S'
-        out += self.draw.D*'D'
-        out += self.draw.E*'E'
-        out += self.draw.V*'V'
-        out += self.draw.A*'A'
-        
-        out += ', discard: '
-        out += self.discard.S*'S'
-        out += self.discard.D*'D'
-        out += self.discard.E*'E'
-        out += self.discard.V*'V'
-        out += self.discard.A*'A'
-        
-        print (out)
-    
-    ################# START OF PLAYER ACTIONS #################
-    # methods to create new states from single card plays
-    def playS(self, needsMiracle = False):
-        newDraw = CardSet(self.draw.S, self.draw.D, self.draw.E, self.draw.V, self.draw.A)
-        newHand = CardSet(self.hand.S-1, self.hand.D, self.hand.E, self.hand.V, self.hand.A)
-        newDiscard = CardSet(self.discard.S+1, self.discard.D, self.discard.E, self.discard.V, self.discard.A)
+        self.gnBuff = gnBuff
 
-        newState = State(self.pHP, self.gnHP, M = self.M, stance = self.stance, 
-        energy = self.energy-1, block = self.block, turn = self.turn, nbuff = self.nbuff, 
-        cardSets = [newDraw, newHand, newDiscard])
-        
-        if newState.stance == 'W':
-            newState.gnHP -= 6
-        if needsMiracle:
-            newState.M = False
-            newState.energy += 1
-            if newState.turn > 1:
-                newState.nbuff += 3
-        return newState
-    
-    def playD(self, needsMiracle = False):
-        newDraw = CardSet(self.draw.S, self.draw.D, self.draw.E, self.draw.V, self.draw.A)
-        newHand = CardSet(self.hand.S, self.hand.D-1, self.hand.E, self.hand.V, self.hand.A)
-        newDiscard = CardSet(self.discard.S, self.discard.D+1, self.discard.E, self.discard.V, self.discard.A)
-        
-        newState = State(self.pHP, self.gnHP, M = self.M, stance = self.stance, 
-        energy = self.energy-1, block = self.block+5, turn = self.turn, nbuff = self.nbuff, 
-        cardSets = [newDraw, newHand, newDiscard])
-        
-        if newState.turn > 1:
-            if needsMiracle:
-                newState.M = False
-                newState.energy += 1
-                newState.nbuff += 6
-            else:
-                newState.nbuff += 3
-        else:
-            if needsMiracle:
-                newState.M = False
-                newState.energy += 1
-        return newState
-    
-    def playE(self, needsMiracle = False):
-        newDraw = CardSet(self.draw.S, self.draw.D, self.draw.E, self.draw.V, self.draw.A)
-        newHand = CardSet(self.hand.S, self.hand.D, self.hand.E-1, self.hand.V, self.hand.A)
-        newDiscard = CardSet(self.discard.S, self.discard.D, self.discard.E+1, self.discard.V, self.discard.A)
-        
-        newState = State(self.pHP, self.gnHP-9, M = self.M, stance = 'W', 
-        energy = self.energy-2, block = self.block, turn = self.turn, nbuff = self.nbuff, 
-        cardSets = [newDraw, newHand, newDiscard])
-        
-        if self.stance == 'W':
-            newState.gnHP -= 9
-        elif self.stance == 'C':
-            newState.energy += 2
-        if needsMiracle:
-            newState.M = False
-            newState.energy += 1
-            if newState.turn > 1:
-                newState.nbuff += 3
-        return newState
+class Stance(Enum):
+    NONE = 0
+    NEUTRAL = 1
+    WRATH = 2
+    CALM = 3
+STANCES = tuple([Stance.NEUTRAL, Stance.WRATH, Stance.CALM])
 
-    def playV(self, needsMiracle = False):
-        newDraw = CardSet(self.draw.S, self.draw.D, self.draw.E, self.draw.V, self.draw.A)
-        newHand = CardSet(self.hand.S, self.hand.D, self.hand.E, self.hand.V-1, self.hand.A)
-        newDiscard = CardSet(self.discard.S, self.discard.D, self.discard.E, self.discard.V+1, self.discard.A)
-        
-        newState = State(self.pHP, self.gnHP, M = self.M, stance = 'C', 
-        energy = self.energy-2, block = self.block+8, turn = self.turn, nbuff = self.nbuff, 
-        cardSets = [newDraw, newHand, newDiscard])
-        
-        if newState.turn > 1:
-            if needsMiracle:
-                newState.M = False
-                newState.energy += 1
-                newState.nbuff += 6
-            else:
-                newState.nbuff += 3
-        else:
-            if needsMiracle:
-                newState.M = False
-                newState.energy += 1
-        return newState
-    
-    # mutator method to end turn for the current state
-    def end(self):
-        # hand -> discard pile
-        self.discard = CardSet(self.discard.S+self.hand.S, 
-        self.discard.D+self.hand.D, 
-        self.discard.E+self.hand.E, 
-        self.discard.V+self.hand.V, 
-        self.discard.A)
-        self.hand = CardSet(0,0,0,0,0)
-        
-        # damage calculated
-        dam = 0
-        if self.turn % 3 == 2:
-            dam = 8+self.nbuff
-            if self.stance == 'W':
-                dam *= 2
-        elif self.turn > 1:
-            dam = 16+self.nbuff
-            if self.stance == 'W':
-                dam *= 3
-            else:
-                dam = math.floor(1.5*dam)
-        
-        # block applied
-        if dam > self.block:
-            dam -= self.block
-        else:
-            dam = 0
-        self.pHP -= dam
-        self.block = 0
-        return
-    ################# END OF PLAYER ACTIONS #################
-    
-################# END OF DECK AND STATE CLASS #################
+class WatcherState:
+    def __init__(self, stance = Stance.NEUTRAL, hasMiracle = True):
+        self.stance = stance
+        self.hasMiracle = hasMiracle
+WATCHER_STATES = []
+for stance in STANCES:
+    WATCHER_STATES.append(WatcherState(stance = stance, hasMiracle = True))
+    WATCHER_STATES.append(WatcherState(stance = stance, hasMiracle = False))
+WATCHER_STATES = tuple(WATCHER_STATES)
 
-################# START OF GLOBAL MANAGEMENT #################
+################# START OF PRE-COMPUTED DATA #################
+# for each 5-card hand, store all playable card sequences
+#   there are 4 sets -- starts in calm (T/F), has miracle (T/F)
+# for each playable card sequences, store the "results"
+#   e.g., damage dealt, ending stance, block, and changes to gnBuff
+
+def playResult(cardSeq, watcherState):
+    E = 3
+    damage = 0
+    block = 0
+    buffGain = 0
+    stance = watcherState.stance
+    hasMiracle = watcherState.hasMiracle
+    
+    for card in cardSeq:
+        if card is Card.STRIKE:
+            if E < 1:
+                if hasMiracle:
+                    E += 1
+                    hasMiracle = False
+                else:
+                    return
+            E -= 1
+            if stance == Stance.WRATH:
+                damage += 12
+            else:
+                damage += 6
+        
+        elif card is Card.DEFEND:
+            if E < 1:
+                if hasMiracle:
+                    E += 1
+                    hasMiracle = False
+                else:
+                    return
+            E -= 1
+            block += 5
+            buffGain = 3
+        
+        elif card is Card.ERUPTION:
+            if E < 2:
+                if hasMiracle:
+                    E += 1
+                    hasMiracle = False
+                else:
+                    return
+            if E < 2:
+                return
+            E -= 2
+            if stance == Stance.WRATH:
+                damage += 18
+            else:
+                if stance == Stance.CALM:
+                    E += 2
+                damage += 9    
+            stance = Stance.WRATH
+        
+        elif card is Card.VIGILANCE:
+            if E < 2:
+                if hasMiracle:
+                    E += 1
+                    hasMiracle = False
+                else:
+                    return
+            if E < 2:
+                return
+            E -= 2
+            block += 8
+            stance = Stance.CALM
+            buffGain += 3
+    endWatcherState = WatcherState(stance = stance, hasMiracle = hasMiracle)
+    return endWatcherState, damage, block, buffGain
+
+PLAYABLE_CARDS = tuple([Card.STRIKE, Card.DEFEND, Card.ERUPTION, Card.VIGILANCE])
+ALL_CARDS = tuple([Card.STRIKE, Card.DEFEND, Card.ERUPTION, Card.VIGILANCE, Card.ASCENDERS_BANE])
+PC = PLAYABLE_CARDS
+AC = ALL_CARDS
+
+# key = sequence of card plays & WatcherStates
+# value = 4-tuple with play results
+PLAYS = dict()
+for play in product(PC,PC,PC,PC,PC):
+    for wstate in WATCHER_STATES:
+        out = playResult(play, wstate)
+        if out != None:
+            PLAYS[(play, wstate)] = out
+
+for play in product(PC,PC,PC,PC):
+    for wstate in WATCHER_STATES:
+        out = playResult(play, wstate)
+        if out != None:
+            PLAYS[(play, wstate)] = out
+
+for play in product(PC,PC,PC):
+    for wstate in WATCHER_STATES:
+        out = playResult(play, wstate)
+        if out != None:
+            PLAYS[(play, wstate)] = out
+
+for play in product(PC,PC):
+    for wstate in WATCHER_STATES:
+        out = playResult(play, wstate)
+        if out != None:
+            PLAYS[(play, wstate)] = out
+
+for play in product(PC):
+    for wstate in WATCHER_STATES:
+        out = playResult(play, wstate)
+        if out != None:
+            PLAYS[(play, wstate)] = out
+
+NULL_TUPLE = tuple()
+for wstate in WATCHER_STATES:
+    out = playResult(NULL_TUPLE, wstate)
+    if out != None:
+        PLAYS[(play, wstate)] = out
+
+print("plays:", len(PLAYS))
+dels = []
+for p,w in PLAYS:
+    nE,nV = 0,0
+    for c in p:
+        if c is Card.ERUPTION:
+            nE += 1
+        elif c is Card.VIGILANCE:
+            nV += 1
+    if nE > 1 or nV > 1:
+        dels.append((p,w))
+for p,w in dels:
+    PLAYS.pop((p,w))
+print("plays:", len(PLAYS))
+
+# key = possible 5-card hands, WatcherStates
+# value = all possible discard orders, play results (as above)
+HANDS = dict()
+for hand in product(AC, AC, AC, AC, AC):
+    nE = 0
+    nV = 0
+    nA = 0
+    for c in hand:
+        if c is Card.ERUPTION:
+            nE += 1
+        elif c is Card.VIGILANCE:
+            nV += 1
+        elif c is Card.ASCENDERS_BANE:
+            nA += 1
+    if nE < 2 and nV < 2 and nA < 2:
+        for wstate in WATCHER_STATES:
+            HANDS[(hand, wstate)] = set()
+            for k in range(6):
+                for sigma in permutations(range(5), k):
+                    play = [hand[si] for si in sigma]
+                    out = playResult(play, wstate)
+                    if out != None:
+                        # out = endWatcherState, damage, block, buffGain
+                        discardOrder = tuple(play + [hand[i] for i in range(5) if not i in sigma])
+                        HANDS[(hand, wstate)].add((discardOrder, out[0], out[1], out[2], out[3]))
+
+print("hands:", len(HANDS))
+################# END OF PRE-COMPUTED DATA #################
+
+
 class StateManager:
-    def __init__(self, pHP=61, gnHP=106):
-        
-        self.shuffler = random.Random()
-        self.draw_pile = ['S' for i in range(4)] + ['D' for i in range(4)] + ['E', 'V', 'A']
-        
-        self.shuffler.shuffle(self.draw_pile)
-        self.curr_hand = self.draw_pile[:5]
-        self.draw_pile = self_draw_pile[5:]
-        
-        self.currStates = queue.Queue()
-        currState = State(pHP, gnHP)
-        self.currStates.put()
-        self.endStates = set([])
-        
-        #### hmmmm
-    
-    
-################# END OF GLOBAL MANAGEMENT #################
+    def __init__(self, pHP = 61, gnHP = 106, startDeck = START_DECK):
+        shuffler = random.Random()
+        self.turn = 0
+        startPositions = CardPositions(startDeck = START_DECK)
+        startWatcher = WatcherState()
+        startCombat = CombatState(pHP = pHP, gnHP = gnHP)
+
+#################  #################
 
 
-gs = State(61, 106)
-print(gs.hand.S)
-gs.show()
 
 
-#gs2 = deepcopy(gs)
-#print(gs2.draw.S)
+
