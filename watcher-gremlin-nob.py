@@ -6,7 +6,6 @@ from itertools import product
 from itertools import permutations
 from itertools import combinations
 
-#   NEW PLAN
 #   Global manager:
 #       turn, deck shuffle permutation
 #       list of all queues
@@ -261,14 +260,22 @@ print("hands:", len(HANDS), ctr)
 class StateManager:
     def __init__(self, pHP = 61, gnHP = 106, startDeck = START_DECK):
         self.turn = 0
-        shuffler = random.Random()
-        sigma = range(len(startDeck))
+        self.shuffler = random.Random()
         
         startPositions = CardPositions(discard = startDeck)
         startWatcher = WatcherState()
         startCombat = CombatState(pHP = pHP, gnHP = gnHP)
         
-        self.StateQueue = queue.Queue()
+        # group CombatStates by CardPositions & stance
+        self.stateDictionary = dict()
+        self.stateDictionary[(startPositions, startWatcher.stance)] = set([(startWatcher, startCombat)])
+    
+    def nextTurn(self):
+        if len(self.stateDictionary) == 0:
+            return 
+        for (pos, stance) in self.stateDictionary:
+            return 
+            # progress! 
         
 #################  #################
 
