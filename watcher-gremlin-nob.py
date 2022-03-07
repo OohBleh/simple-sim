@@ -233,43 +233,23 @@ print("plays:", len(PLAYS))
 # key = possible 5-card hands, WatcherStates
 # value = all possible discard orders, play results (as above)
 
-
 ctr = 0
-for hand in combinations(START_DECK, 5):
-    ctr += 1
-print("ctr =", ctr)
-
-
+PERMS = set()
+for hand in permutations(START_DECK, 5):
+    PERMS.add(hand)
 
 HANDS = dict()
-for hand in product(AC, AC, AC, AC, AC):
-    nE = 0
-    nV = 0
-    nA = 0
-    nS = 0
-    nD = 0
-    for c in hand:
-        if c is Card.ERUPTION:
-            nE += 1
-        elif c is Card.VIGILANCE:
-            nV += 1
-        elif c is Card.ASCENDERS_BANE:
-            nA += 1
-        elif c is Card.STRIKE:
-            nS += 1
-        elif c is Card.DEFEND:
-            nD += 1
-    if nE < 2 and nV < 2 and nA < 2 and nS < 5 and nD < 5:
-        for wstate in WATCHER_STATES:
-            HANDS[(hand, wstate)] = set()
-            for k in range(6):
-                for sigma in permutations(range(5), k):
-                    play = [hand[si] for si in sigma]
-                    out = playResult(play, wstate)
-                    if out != None:
-                        # out = endWatcherState, damage, block, buffGain
-                        discardOrder = tuple(play + [hand[i] for i in range(5) if not i in sigma])
-                        HANDS[(hand, wstate)].add((discardOrder, out[0], out[1], out[2], out[3]))
+for hand in PERMS:
+    for wstate in WATCHER_STATES:
+        HANDS[(hand, wstate)] = set()
+        for k in range(6):
+            for sigma in permutations(range(5), k):
+                play = [hand[si] for si in sigma]
+                out = playResult(play, wstate)
+                if out != None:
+                    # out = endWatcherState, damage, block, buffGain
+                    discardOrder = tuple(play + [hand[i] for i in range(5) if not i in sigma])
+                    HANDS[(hand, wstate)].add((discardOrder, out[0], out[1], out[2], out[3]))
 
 ctr = 0
 for hand in HANDS:
@@ -294,5 +274,5 @@ class StateManager:
 
 
 
-
+sm = StateManager()
 
