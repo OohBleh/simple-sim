@@ -421,7 +421,7 @@ MY_DECK = tuple([Card.STRIKE]*4+[Card.DEFEND]*3+[Card.ERUPTION,Card.VIGILANCE,Ca
 
 nWins = 0
 nTotal = 0
-while nTotal < 10000:
+while nTotal < 1000:
     sm = StateManager(gnHP = 106, verbose = False, startDeck = START_DECK)
     #print("turn 0 states:", sm.numStates())
     i = 0
@@ -436,7 +436,7 @@ while nTotal < 10000:
     nTotal += 1
     
     if nTotal % 100 == 0:
-        print(nWins, "out of", nTotal, ":", nWins/nTotal)
+        print(nWins, "out of", nTotal, ":", nWins/nTotal, "HANDS:", len(HANDS))
 
 print(nWins, "out of", nTotal, ":", nWins/nTotal)
 
