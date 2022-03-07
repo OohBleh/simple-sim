@@ -405,7 +405,7 @@ class StateManager:
                             #print("popped!")
                             nextDict[(pos, nextWS.stance)].add(nextState)
                         else:
-                            if not less:
+                            if less == False:
                                 nextDict[(pos, nextWS.stance)].add(nextState)
         self.stateDictionary = nextDict
         if len(self.stateDictionary) == 0:
