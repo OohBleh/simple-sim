@@ -266,7 +266,8 @@ def handResults(hand, wstate):
             out = playResult(play, wstate)
             if out != None:
                 # out = endWatcherState, damage, block, buffGain
-                discardOrder = tuple(play + [hand[i] for i in range(5) if not i in sigma])
+                discardOrder = tuple(play + [hand[i] for i in range(5) if not i in sigma
+                and not hand[i] is Card.ASCENDERS_BANE])
                 results.add(tuple([discardOrder]) + out)
     return results
 
