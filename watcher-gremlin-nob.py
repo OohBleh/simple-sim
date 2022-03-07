@@ -60,6 +60,8 @@ class CardPositions:
         self.draw = tuple(draw)
         self.hand = tuple(hand)
         self.discard = tuple(discard)
+#    def __str__(self):
+#        str(self.draw) + ", " + str(self.hand) + ", " + str(self.discard)
     
     # apply a permutation to get the next hand
     # length of sigma assumed to equal self.discard
@@ -79,6 +81,8 @@ class CombatState:
         self.pHP = pHP
         self.gnHP = gnHP
         self.gnBuff = gnBuff
+#    def __str__(self):
+#        return str((self.pHP, self.gnHP, self.gnBuff))
 
 class Stance(Enum):
     NONE = 0
@@ -91,6 +95,7 @@ class WatcherState:
     def __init__(self, stance = Stance.NEUTRAL, hasMiracle = True):
         self.stance = stance
         self.hasMiracle = hasMiracle
+
 WATCHER_STATES = []
 for stance in STANCES:
     WATCHER_STATES.append(WatcherState(stance = stance, hasMiracle = True))
@@ -235,30 +240,63 @@ print("plays:", len(PLAYS))
 ctr = 0
 PERMS = set()
 for hand in permutations(START_DECK, 5):
-    PERMS.add(hand)
+    PERMS.add(tuple(hand))
 
 HANDS = dict()
-for hand in PERMS:
-    for wstate in WATCHER_STATES:
-        HANDS[(hand, wstate)] = set()
-        for k in range(6):
-            for sigma in permutations(range(5), k):
-                play = [hand[si] for si in sigma]
-                out = playResult(play, wstate)
-                if out != None:
-                    # out = endWatcherState, damage, block, buffGain
-                    discardOrder = tuple(play + [hand[i] for i in range(5) if not i in sigma])
-                    HANDS[(hand, wstate)].add(tuple([discardOrder]) + out)
+#for hand in PERMS:
+#    for wstate in WATCHER_STATES:
+#        HANDS[(hand, wstate)] = set()
+#        for k in range(6):
+#            for sigma in permutations(range(5), k):
+#                play = [hand[si] for si in sigma]
+#                out = playResult(play, wstate)
+#                if out != None:
+#                    # out = endWatcherState, damage, block, buffGain
+#                    discardOrder = tuple(play + [hand[i] for i in range(5) if not i in sigma
+#                    and not hand[i] is Card.ASCENDERS_BANE])
+#                    HANDS[(hand, wstate)].add(tuple([discardOrder]) + out)
 
-ctr = 0
-for hand in HANDS:
-    ctr += len(HANDS[hand])
-print("hands:", len(HANDS), ctr)
+def handResults(hand, wstate):
+    results = set()
+    for k in range(6):
+        for sigma in permutations(range(5), k):
+            play = [hand[si] for si in sigma]
+            out = playResult(play, wstate)
+            if out != None:
+                # out = endWatcherState, damage, block, buffGain
+                discardOrder = tuple(play + [hand[i] for i in range(5) if not i in sigma])
+                results.add(tuple([discardOrder]) + out)
+    return results
 
-print(list(HANDS)[69])
+#ctr = 0
+#for hand in HANDS:
+#    ctr += len(HANDS[hand])
+#print("hands:", len(HANDS), ctr)
 
 ################# END OF PRE-COMPUTED DATA #################
 
+def compareStates(state1, state2):
+    ws1, gs1 = state1
+    ws2, gs2 = state2
+    
+    if not ws1.stance is ws2.stance:
+        return
+    
+    lesser = ws2.hasMiracle or not ws1.hasMiracle
+    lesser = lesser and gs1.pHP <= gs2.pHP
+    lesser = lesser and gs1.gnHP >= gs2.gnHP
+    lesser = lesser and gs1.gnBuff >= gs2.gnBuff
+    
+    greater = ws1.hasMiracle or not ws2.hasMiracle
+    greater = greater and gs2.pHP <= gs1.pHP
+    greater = greater and gs2.gnHP >= gs1.gnHP
+    greater = greater and gs2.gnBuff >= gs1.gnBuff
+    
+    if lesser:
+        return True
+    if greater:
+        return False
+    return 
 
 class StateManager:
     def __init__(self, pHP = 61, gnHP = 106, startDeck = START_DECK):
@@ -274,6 +312,12 @@ class StateManager:
         # group CombatStates by CardPositions & stance
         self.stateDictionary = dict()
         self.stateDictionary[(startPositions, startWatcher.stance)] = set([(startWatcher, startCombat)])
+    
+    def numStates(self):
+        ctr = 0
+        for elt in self.stateDictionary:
+            ctr += len(self.stateDictionary[elt])
+        return ctr
     
     def nextTurn(self):
         if len(self.stateDictionary) == 0:
@@ -291,11 +335,17 @@ class StateManager:
         
         # the previous positions have hand = [] (discarded)
         for (pos, stance) in self.stateDictionary:
+            #print("pos, stance =", pos, stance, "...")
             currPos = pos.nextPositions(sigma)
             for (ws, cs) in self.stateDictionary[(pos, stance)]:
+                #print("  ws, cs =", ws, cs, "...")
+                if not (currPos.hand, ws) in HANDS:
+                    HANDS[(currPos.hand, ws)] = handResults(currPos.hand, ws)
                 for out in HANDS[(currPos.hand, ws)]:
+                    #print("    result =", out, "...")
                     # out = (discardOrder, endWatcherState, damage, block, buffGain)
-                    nextPos = CardPositions(draw = currPos.draw, hand = [], discard = currPos + out[0])
+                    nextPos = CardPositions(draw = currPos.draw, hand = [], 
+                    discard = currPos.discard + out[0])
                     nextWS = out[1]
                     newGNHP = cs.gnHP - out[2]
                     
@@ -319,11 +369,32 @@ class StateManager:
                         nextCS = CombatState(pHP = cs.pHP - lostHP, 
                         gnHP = cs.gnHP - out[2], gnBuff = nextBuff)
                     
-                    if nextCS.pHP <= 0:
-                        if (pos, nextWS.stance) in nextDictionary:
-                            nextDict[(pos, nextWS.stance)].add((nextWS, nextCS))
-                        else:
+                    if nextCS.pHP > 0:
+                        if not (pos, nextWS.stance) in nextDict:
                             nextDict[(pos, nextWS.stance)] = set([(nextWS, nextCS)])
+                        nextState = (nextWS, nextCS)
+                        pops = []
+                        less = False
+                        for otherState in nextDict[(pos, nextWS.stance)]:
+                            comp = compareStates(nextState, otherState)
+                            if comp == True:
+                                less = True
+                            else:
+                                if comp == False:
+                                    pops.append(otherState)
+                        if pops:
+                            print("nextState =", nextState[0].stance, nextState[0].hasMiracle, 
+                            nextState[1].pHP, nextState[1].gnHP, nextState[1].gnBuff, "beats...")
+                            for otherState in pops:
+                                nextDict[(pos, nextWS.stance)].remove(otherState)
+                                print("  otherState =", otherState[0].stance, otherState[0].hasMiracle, 
+                            otherState[1].pHP, otherState[1].gnHP, otherState[1].gnBuff)
+                            
+                            print("popped!")
+                            nextDict[(pos, nextWS.stance)].add(nextState)
+                        else:
+                            if not less:
+                                nextDict[(pos, nextWS.stance)].add(nextState)
         self.stateDictionary = nextDict
         return 
             # progress! 
@@ -332,6 +403,9 @@ class StateManager:
 
 
 sm = StateManager()
-print("turn 0 states:", len(sm.stateDictionary))
-sm.nextTurn()
-print("turn 1 states:", len(sm.stateDictionary))
+print("turn 0 states:", sm.numStates())
+for i in range(1,5+1):
+    sm.nextTurn()
+    print("turn", i, "states:", sm.numStates())
+
+
