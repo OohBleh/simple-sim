@@ -348,9 +348,11 @@ class StateManager:
             for (ws, cs) in self.stateDictionary[(pos, stance)]:
                 if self.verbose:
                     print("  ws, cs =", ws, cs, "...")
-                if not (currPos.hand, ws) in HANDS:
-                    HANDS[(currPos.hand, ws)] = handResults(currPos.hand, ws)
-                for out in HANDS[(currPos.hand, ws)]:
+                #if not (currPos.hand, ws) in HANDS:
+                #    HANDS[(currPos.hand, ws)] = handResults(currPos.hand, ws)
+                #for out in HANDS[(currPos.hand, ws)]:
+                hr = handResults(currPos.hand, ws)
+                for out in hr:
                     if False and self.verbose:
                         print("    result =", out, "...")
                     # out = (discardOrder, endWatcherState, damage, block, buffGain)
@@ -421,7 +423,7 @@ MY_DECK = tuple([Card.STRIKE]*4+[Card.DEFEND]*3+[Card.ERUPTION,Card.VIGILANCE,Ca
 
 nWins = 0
 nTotal = 0
-while nTotal < 1000:
+while nTotal < 10000:
     sm = StateManager(gnHP = 106, verbose = False, startDeck = START_DECK)
     #print("turn 0 states:", sm.numStates())
     i = 0
@@ -436,7 +438,8 @@ while nTotal < 1000:
     nTotal += 1
     
     if nTotal % 100 == 0:
-        print(nWins, "out of", nTotal, ":", nWins/nTotal, "HANDS:", len(HANDS))
+        #print(nWins, "out of", nTotal, ":", nWins/nTotal, "HANDS:", len(HANDS))
+        print(nWins, "out of", nTotal, ":", nWins/nTotal)
 
 print(nWins, "out of", nTotal, ":", nWins/nTotal)
 
