@@ -248,12 +248,15 @@ for hand in PERMS:
                 if out != None:
                     # out = endWatcherState, damage, block, buffGain
                     discardOrder = tuple(play + [hand[i] for i in range(5) if not i in sigma])
-                    HANDS[(hand, wstate)].add((discardOrder, out[0], out[1], out[2], out[3]))
+                    HANDS[(hand, wstate)].add(tuple([discardOrder]) + out)
 
 ctr = 0
 for hand in HANDS:
     ctr += len(HANDS[hand])
 print("hands:", len(HANDS), ctr)
+
+print(list(HANDS)[69])
+
 ################# END OF PRE-COMPUTED DATA #################
 
 
@@ -265,6 +268,8 @@ class StateManager:
         startPositions = CardPositions(discard = startDeck)
         startWatcher = WatcherState()
         startCombat = CombatState(pHP = pHP, gnHP = gnHP)
+        self.drawPileSize = len(startPositions.draw)
+        self.discardPileSize = len(startPositions.discard)
         
         # group CombatStates by CardPositions & stance
         self.stateDictionary = dict()
@@ -273,13 +278,60 @@ class StateManager:
     def nextTurn(self):
         if len(self.stateDictionary) == 0:
             return 
+        
+        self.turn += 1
+        
+        if self.drawPileSize < 5:
+            sigma = [i for i in range(self.discardPileSize)]
+            self.shuffler.shuffle(sigma)
+        else:
+            sigma = None
+        
+        nextDict = dict()
+        
+        # the previous positions have hand = [] (discarded)
         for (pos, stance) in self.stateDictionary:
-            return 
+            currPos = pos.nextPositions(sigma)
+            for (ws, cs) in self.stateDictionary[(pos, stance)]:
+                for out in HANDS[(currPos.hand, ws)]:
+                    # out = (discardOrder, endWatcherState, damage, block, buffGain)
+                    nextPos = CardPositions(draw = currPos.draw, hand = [], discard = currPos + out[0])
+                    nextWS = out[1]
+                    newGNHP = cs.gnHP - out[2]
+                    
+                    if self.turn == 1:
+                        nextCS = CombatState(pHP = cs.pHP, gnHP = cs.gnHP - out[2])
+                    else:
+                        nextBuff = cs.gnBuff + out[4]
+                        if self.turn % 3 == 2:
+                            lostHP = 8 + nextBuff
+                            if nextWS.stance is Stance.WRATH:
+                                lostHP *= 2
+                        else:
+                            lostHP = 16 + nextBuff
+                            if nextWS.stance is Stance.WRATH:
+                                lostHP *= 3
+                            else:
+                                lostHP = int(1.5*lostHP)
+                            lostHP -= out[3]
+                            if lostHP < 0:
+                                lostHP = 0
+                        nextCS = CombatState(pHP = cs.pHP - lostHP, 
+                        gnHP = cs.gnHP - out[2], gnBuff = nextBuff)
+                    
+                    if nextCS.pHP <= 0:
+                        if (pos, nextWS.stance) in nextDictionary:
+                            nextDict[(pos, nextWS.stance)].add((nextWS, nextCS))
+                        else:
+                            nextDict[(pos, nextWS.stance)] = set([(nextWS, nextCS)])
+        self.stateDictionary = nextDict
+        return 
             # progress! 
         
 #################  #################
 
 
-
 sm = StateManager()
-
+print("turn 0 states:", len(sm.stateDictionary))
+sm.nextTurn()
+print("turn 1 states:", len(sm.stateDictionary))
