@@ -182,57 +182,59 @@ AC = ALL_CARDS
 
 # key = sequence of card plays & WatcherStates
 # value = 4-tuple with play results
-PLAYS = dict()
-for play in product(PC,PC,PC,PC,PC):
-    for wstate in WATCHER_STATES:
-        out = playResult(play, wstate)
-        if out != None:
-            PLAYS[(play, wstate)] = out
+# PLAYS = dict()
+# for play in product(PC,PC,PC,PC,PC):
+#     for wstate in WATCHER_STATES:
+#         out = playResult(play, wstate)
+#         if out != None:
+#             PLAYS[(play, wstate)] = out
+# 
+# for play in product(PC,PC,PC,PC):
+#     for wstate in WATCHER_STATES:
+#         out = playResult(play, wstate)
+#         if out != None:
+#             PLAYS[(play, wstate)] = out
+# 
+# for play in product(PC,PC,PC):
+#     for wstate in WATCHER_STATES:
+#         out = playResult(play, wstate)
+#         if out != None:
+#             PLAYS[(play, wstate)] = out
+# 
+# for play in product(PC,PC):
+#     for wstate in WATCHER_STATES:
+#         out = playResult(play, wstate)
+#         if out != None:
+#             PLAYS[(play, wstate)] = out
+# 
+# for play in product(PC):
+#     for wstate in WATCHER_STATES:
+#         out = playResult(play, wstate)
+#         if out != None:
+#             PLAYS[(play, wstate)] = out
+# 
+# NULL_TUPLE = tuple()
+# for wstate in WATCHER_STATES:
+#     out = playResult(NULL_TUPLE, wstate)
+#     if out != None:
+#         PLAYS[(play, wstate)] = out
+# 
+# print("plays:", len(PLAYS))
+# dels = []
+# for p,w in PLAYS:
+#     nE,nV = 0,0
+#     for c in p:
+#         if c is Card.ERUPTION:
+#             nE += 1
+#         elif c is Card.VIGILANCE:
+#             nV += 1
+#     if nE > 1 or nV > 1:
+#         dels.append((p,w))
+# for p,w in dels:
+#     PLAYS.pop((p,w))
+# print("plays:", len(PLAYS))
 
-for play in product(PC,PC,PC,PC):
-    for wstate in WATCHER_STATES:
-        out = playResult(play, wstate)
-        if out != None:
-            PLAYS[(play, wstate)] = out
 
-for play in product(PC,PC,PC):
-    for wstate in WATCHER_STATES:
-        out = playResult(play, wstate)
-        if out != None:
-            PLAYS[(play, wstate)] = out
-
-for play in product(PC,PC):
-    for wstate in WATCHER_STATES:
-        out = playResult(play, wstate)
-        if out != None:
-            PLAYS[(play, wstate)] = out
-
-for play in product(PC):
-    for wstate in WATCHER_STATES:
-        out = playResult(play, wstate)
-        if out != None:
-            PLAYS[(play, wstate)] = out
-
-NULL_TUPLE = tuple()
-for wstate in WATCHER_STATES:
-    out = playResult(NULL_TUPLE, wstate)
-    if out != None:
-        PLAYS[(play, wstate)] = out
-
-print("plays:", len(PLAYS))
-dels = []
-for p,w in PLAYS:
-    nE,nV = 0,0
-    for c in p:
-        if c is Card.ERUPTION:
-            nE += 1
-        elif c is Card.VIGILANCE:
-            nV += 1
-    if nE > 1 or nV > 1:
-        dels.append((p,w))
-for p,w in dels:
-    PLAYS.pop((p,w))
-print("plays:", len(PLAYS))
 
 # key = possible 5-card hands, WatcherStates
 # value = all possible discard orders, play results (as above)
@@ -414,11 +416,12 @@ class StateManager:
         
 #################  #################
 
+MY_DECK = tuple([Card.STRIKE]*4+[Card.DEFEND]*3+[Card.ERUPTION,Card.VIGILANCE,Card.ASCENDERS_BANE])
 
 nWins = 0
 nTotal = 0
-while nTotal < 1000:
-    sm = StateManager(verbose = False)
+while nTotal < 10000:
+    sm = StateManager(gnHP = 106, verbose = False, startDeck = START_DECK)
     #print("turn 0 states:", sm.numStates())
     i = 0
     while sm.numStates():
@@ -431,7 +434,7 @@ while nTotal < 1000:
         nWins += 1
     nTotal += 1
     
-    if nTotal % 10 == 0:
+    if nTotal % 100 == 0:
         print(nWins, "out of", nTotal, ":", nWins/nTotal)
 
 print(nWins, "out of", nTotal, ":", nWins/nTotal)
