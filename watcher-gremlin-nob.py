@@ -299,9 +299,11 @@ def compareStates(state1, state2):
     return 
 
 class StateManager:
-    def __init__(self, pHP = 61, gnHP = 106, startDeck = START_DECK):
+    def __init__(self, pHP = 61, gnHP = 106, startDeck = START_DECK, verbose = False):
         self.turn = 0
         self.shuffler = random.Random()
+        self.verbose = verbose
+        self.winnable = None
         
         startPositions = CardPositions(discard = startDeck)
         startWatcher = WatcherState()
@@ -331,18 +333,23 @@ class StateManager:
         else:
             sigma = None
         
+        if self.verbose:
+            print("turn", self.turn, "shuffle =", sigma)
         nextDict = dict()
         
         # the previous positions have hand = [] (discarded)
         for (pos, stance) in self.stateDictionary:
-            #print("pos, stance =", pos, stance, "...")
+            if self.verbose:
+                print("pos, stance =", pos, stance, "...")
             currPos = pos.nextPositions(sigma)
             for (ws, cs) in self.stateDictionary[(pos, stance)]:
-                #print("  ws, cs =", ws, cs, "...")
+                if self.verbose:
+                    print("  ws, cs =", ws, cs, "...")
                 if not (currPos.hand, ws) in HANDS:
                     HANDS[(currPos.hand, ws)] = handResults(currPos.hand, ws)
                 for out in HANDS[(currPos.hand, ws)]:
-                    #print("    result =", out, "...")
+                    if False and self.verbose:
+                        print("    result =", out, "...")
                     # out = (discardOrder, endWatcherState, damage, block, buffGain)
                     nextPos = CardPositions(draw = currPos.draw, hand = [], 
                     discard = currPos.discard + out[0])
@@ -369,6 +376,9 @@ class StateManager:
                         nextCS = CombatState(pHP = cs.pHP - lostHP, 
                         gnHP = cs.gnHP - out[2], gnBuff = nextBuff)
                     
+                    if nextCS.gnHP <= 0:
+                        self.winnable = True
+                    
                     if nextCS.pHP > 0:
                         if not (pos, nextWS.stance) in nextDict:
                             nextDict[(pos, nextWS.stance)] = set([(nextWS, nextCS)])
@@ -383,29 +393,46 @@ class StateManager:
                                 if comp == False:
                                     pops.append(otherState)
                         if pops:
-                            print("nextState =", nextState[0].stance, nextState[0].hasMiracle, 
-                            nextState[1].pHP, nextState[1].gnHP, nextState[1].gnBuff, "beats...")
+                            #print("nextState =", nextState[0].stance, nextState[0].hasMiracle, 
+                            #nextState[1].pHP, nextState[1].gnHP, nextState[1].gnBuff, "beats...")
                             for otherState in pops:
                                 nextDict[(pos, nextWS.stance)].remove(otherState)
-                                print("  otherState =", otherState[0].stance, otherState[0].hasMiracle, 
-                            otherState[1].pHP, otherState[1].gnHP, otherState[1].gnBuff)
+                                #print("  otherState =", otherState[0].stance, otherState[0].hasMiracle, 
+                                #otherState[1].pHP, otherState[1].gnHP, otherState[1].gnBuff)
                             
-                            print("popped!")
+                            #print("popped!")
                             nextDict[(pos, nextWS.stance)].add(nextState)
                         else:
                             if not less:
                                 nextDict[(pos, nextWS.stance)].add(nextState)
         self.stateDictionary = nextDict
-        return 
-            # progress! 
+        if len(self.stateDictionary) == 0:
+            if self.winnable == None:
+                self.winnable = False
+        if self.verbose:
+            print("number of states:", self.numStates())
         
 #################  #################
 
 
-sm = StateManager()
-print("turn 0 states:", sm.numStates())
-for i in range(1,5+1):
-    sm.nextTurn()
-    print("turn", i, "states:", sm.numStates())
+nWins = 0
+nTotal = 0
+while nTotal < 1000:
+    sm = StateManager(verbose = False)
+    #print("turn 0 states:", sm.numStates())
+    i = 0
+    while sm.numStates():
+        sm.nextTurn()
+        i += 1
+        #print("turn", i, "states:", sm.numStates())
+        #print("won yet?", sm.winnable)
+        #print()
+    if sm.winnable:
+        nWins += 1
+    nTotal += 1
+    
+    if nTotal % 10 == 0:
+        print(nWins, "out of", nTotal, ":", nWins/nTotal)
 
+print(nWins, "out of", nTotal, ":", nWins/nTotal)
 
