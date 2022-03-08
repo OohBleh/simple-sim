@@ -52,16 +52,26 @@ class Card(Enum):
     VIGILANCE = 4
     ASCENDERS_BANE = 5
 
-START_DECK = tuple([Card.STRIKE, Card.DEFEND]*4+[Card.ERUPTION, Card.VIGILANCE, Card.ASCENDERS_BANE])
-        
+CARDS = [Card.NONE, Card.STRIKE, Card.DEFEND, Card.ERUPTION, Card.VIGILANCE, Card.ASCENDERS_BANE]
+CARD_NAMES = ['none', 'S', 'D', 'E', 'V', 'A']
+START_DECK = tuple([Card.STRIKE]*4+[Card.STRIKE]*4+[Card.ERUPTION,Card.VIGILANCE,Card.ASCENDERS_BANE])
 
 class CardPositions:
     def __init__(self, draw = [], hand = [], discard = START_DECK):
         self.draw = tuple(draw)
         self.hand = tuple(hand)
         self.discard = tuple(discard)
-#    def __str__(self):
-#        str(self.draw) + ", " + str(self.hand) + ", " + str(self.discard)
+    def __str__(self):
+        out = ''
+        for card in self.draw:
+            out += CARD_NAMES[card.value]
+        out += '|'
+        for card in self.hand:
+            out += CARD_NAMES[card.value]
+        out += '|'
+        for card in self.discard:
+            out += CARD_NAMES[card.value]
+        return out
     
     # apply a permutation to get the next hand
     # length of sigma assumed to equal self.discard
@@ -76,31 +86,38 @@ class CardPositions:
         newDraw = newDraw[5:]
         return CardPositions(newDraw, newHand, newDiscard)
 
+
 class CombatState:
     def __init__(self, pHP = 61, gnHP = 106, gnBuff = 0):
         self.pHP = pHP
         self.gnHP = gnHP
         self.gnBuff = gnBuff
-#    def __str__(self):
-#        return str((self.pHP, self.gnHP, self.gnBuff))
+    def __str__(self):
+        return f'pHP = {self.pHP}, gnHP = {self.gnHP}, gnBuff = {self.gnBuff}'
 
 class Stance(Enum):
     NONE = 0
     NEUTRAL = 1
     WRATH = 2
     CALM = 3
-STANCES = tuple([Stance.NEUTRAL, Stance.WRATH, Stance.CALM])
+STANCES = [Stance.NONE, Stance.NEUTRAL, Stance.WRATH, Stance.CALM]
+STANCE_NAMES = ['none', 'neutral', 'wrath', 'calm']
 
 class WatcherState:
     def __init__(self, stance = Stance.NEUTRAL, hasMiracle = True):
         self.stance = stance
         self.hasMiracle = hasMiracle
+    def __str__(self):
+        if self.hasMiracle:
+            return STANCE_NAMES[self.stance.value] + ', 1 miracle'
+        else:
+            return STANCE_NAMES[self.stance.value] + ', 0 miracle' 
 
-WATCHER_STATES = []
-for stance in STANCES:
-    WATCHER_STATES.append(WatcherState(stance = stance, hasMiracle = True))
-    WATCHER_STATES.append(WatcherState(stance = stance, hasMiracle = False))
-WATCHER_STATES = tuple(WATCHER_STATES)
+#WATCHER_STATES = []
+#for stance in STANCES[1:]:
+#    WATCHER_STATES.append(WatcherState(stance = stance, hasMiracle = True))
+#    WATCHER_STATES.append(WatcherState(stance = stance, hasMiracle = False))
+#WATCHER_STATES = tuple(WATCHER_STATES)
 
 ################# START OF PRE-COMPUTED DATA #################
 # for each 5-card hand, store all playable card sequences
@@ -117,6 +134,8 @@ def playResult(cardSeq, watcherState):
     hasMiracle = watcherState.hasMiracle
     
     for card in cardSeq:
+        if card is Card.ASCENDERS_BANE:
+            return 
         if card is Card.STRIKE:
             if E < 1:
                 if hasMiracle:
@@ -175,89 +194,6 @@ def playResult(cardSeq, watcherState):
     endWatcherState = WatcherState(stance = stance, hasMiracle = hasMiracle)
     return endWatcherState, damage, block, buffGain
 
-PLAYABLE_CARDS = tuple([Card.STRIKE, Card.DEFEND, Card.ERUPTION, Card.VIGILANCE])
-ALL_CARDS = tuple([Card.STRIKE, Card.DEFEND, Card.ERUPTION, Card.VIGILANCE, Card.ASCENDERS_BANE])
-PC = PLAYABLE_CARDS
-AC = ALL_CARDS
-
-# key = sequence of card plays & WatcherStates
-# value = 4-tuple with play results
-# PLAYS = dict()
-# for play in product(PC,PC,PC,PC,PC):
-#     for wstate in WATCHER_STATES:
-#         out = playResult(play, wstate)
-#         if out != None:
-#             PLAYS[(play, wstate)] = out
-# 
-# for play in product(PC,PC,PC,PC):
-#     for wstate in WATCHER_STATES:
-#         out = playResult(play, wstate)
-#         if out != None:
-#             PLAYS[(play, wstate)] = out
-# 
-# for play in product(PC,PC,PC):
-#     for wstate in WATCHER_STATES:
-#         out = playResult(play, wstate)
-#         if out != None:
-#             PLAYS[(play, wstate)] = out
-# 
-# for play in product(PC,PC):
-#     for wstate in WATCHER_STATES:
-#         out = playResult(play, wstate)
-#         if out != None:
-#             PLAYS[(play, wstate)] = out
-# 
-# for play in product(PC):
-#     for wstate in WATCHER_STATES:
-#         out = playResult(play, wstate)
-#         if out != None:
-#             PLAYS[(play, wstate)] = out
-# 
-# NULL_TUPLE = tuple()
-# for wstate in WATCHER_STATES:
-#     out = playResult(NULL_TUPLE, wstate)
-#     if out != None:
-#         PLAYS[(play, wstate)] = out
-# 
-# print("plays:", len(PLAYS))
-# dels = []
-# for p,w in PLAYS:
-#     nE,nV = 0,0
-#     for c in p:
-#         if c is Card.ERUPTION:
-#             nE += 1
-#         elif c is Card.VIGILANCE:
-#             nV += 1
-#     if nE > 1 or nV > 1:
-#         dels.append((p,w))
-# for p,w in dels:
-#     PLAYS.pop((p,w))
-# print("plays:", len(PLAYS))
-
-
-
-# key = possible 5-card hands, WatcherStates
-# value = all possible discard orders, play results (as above)
-
-ctr = 0
-PERMS = set()
-for hand in permutations(START_DECK, 5):
-    PERMS.add(tuple(hand))
-
-HANDS = dict()
-#for hand in PERMS:
-#    for wstate in WATCHER_STATES:
-#        HANDS[(hand, wstate)] = set()
-#        for k in range(6):
-#            for sigma in permutations(range(5), k):
-#                play = [hand[si] for si in sigma]
-#                out = playResult(play, wstate)
-#                if out != None:
-#                    # out = endWatcherState, damage, block, buffGain
-#                    discardOrder = tuple(play + [hand[i] for i in range(5) if not i in sigma
-#                    and not hand[i] is Card.ASCENDERS_BANE])
-#                    HANDS[(hand, wstate)].add(tuple([discardOrder]) + out)
-
 def handResults(hand, wstate):
     results = set()
     for k in range(6):
@@ -283,14 +219,15 @@ def compareStates(state1, state2):
     ws2, gs2 = state2
     
     if not ws1.stance is ws2.stance:
-        return
+        lesser = ws1.stance is Stance.NEUTRAL and ws2.stance is Stance.CALM
+        greater = ws2.stance is Stance.CALM and ws2.stance is Stance.NEUTRAL
     
-    lesser = ws2.hasMiracle or not ws1.hasMiracle
+    lesser = lesser and (ws2.hasMiracle or not ws1.hasMiracle)
     lesser = lesser and gs1.pHP <= gs2.pHP
     lesser = lesser and gs1.gnHP >= gs2.gnHP
     lesser = lesser and gs1.gnBuff >= gs2.gnBuff
     
-    greater = ws1.hasMiracle or not ws2.hasMiracle
+    greater = greater and (ws1.hasMiracle or not ws2.hasMiracle)
     greater = greater and gs2.pHP <= gs1.pHP
     greater = greater and gs2.gnHP >= gs1.gnHP
     greater = greater and gs2.gnBuff >= gs1.gnBuff
@@ -316,7 +253,7 @@ class StateManager:
         
         # group CombatStates by CardPositions & stance
         self.stateDictionary = dict()
-        self.stateDictionary[(startPositions, startWatcher.stance)] = set([(startWatcher, startCombat)])
+        self.stateDictionary[startPositions] = set([(startWatcher, startCombat)])
     
     def numStates(self):
         ctr = 0
@@ -341,20 +278,24 @@ class StateManager:
         nextDict = dict()
         
         # the previous positions have hand = [] (discarded)
-        for (pos, stance) in self.stateDictionary:
-            if self.verbose:
-                print("pos, stance =", pos, stance, "...")
+        for pos in self.stateDictionary:
             currPos = pos.nextPositions(sigma)
-            for (ws, cs) in self.stateDictionary[(pos, stance)]:
+            if self.verbose:
+                print(pos, "draws into", currPos)
+            for (ws, cs) in self.stateDictionary[pos]:
                 if self.verbose:
-                    print("  ws, cs =", ws, cs, "...")
+                    print("  ws =", ws, "; cs =", cs, "...")
                 #if not (currPos.hand, ws) in HANDS:
                 #    HANDS[(currPos.hand, ws)] = handResults(currPos.hand, ws)
                 #for out in HANDS[(currPos.hand, ws)]:
                 hr = handResults(currPos.hand, ws)
                 for out in hr:
-                    if False and self.verbose:
-                        print("    result =", out, "...")
+                    if self.verbose:
+                        discardString = ''
+                        for card in out[0]:
+                            discardString += CARD_NAMES[card.value]
+                        print("    result =", discardString, out[1], 
+                        out[2:], "...")
                     # out = (discardOrder, endWatcherState, damage, block, buffGain)
                     nextPos = CardPositions(draw = currPos.draw, hand = [], 
                     discard = currPos.discard + out[0])
@@ -381,16 +322,19 @@ class StateManager:
                         nextCS = CombatState(pHP = cs.pHP - lostHP, 
                         gnHP = cs.gnHP - out[2], gnBuff = nextBuff)
                     
+                    if self.verbose:
+                        print("    results in:", nextPos, nextWS, nextCS)
+                    
                     if nextCS.gnHP <= 0:
                         self.winnable = True
                     
                     if nextCS.pHP > 0:
-                        if not (pos, nextWS.stance) in nextDict:
-                            nextDict[(pos, nextWS.stance)] = set([(nextWS, nextCS)])
                         nextState = (nextWS, nextCS)
+                        if not nextPos in nextDict:
+                            nextDict[nextPos] = set()
                         pops = []
                         less = False
-                        for otherState in nextDict[(pos, nextWS.stance)]:
+                        for otherState in nextDict[nextPos]:
                             comp = compareStates(nextState, otherState)
                             if comp == True:
                                 less = True
@@ -401,15 +345,18 @@ class StateManager:
                             #print("nextState =", nextState[0].stance, nextState[0].hasMiracle, 
                             #nextState[1].pHP, nextState[1].gnHP, nextState[1].gnBuff, "beats...")
                             for otherState in pops:
-                                nextDict[(pos, nextWS.stance)].remove(otherState)
+                                nextDict[pos].remove(otherState)
                                 #print("  otherState =", otherState[0].stance, otherState[0].hasMiracle, 
                                 #otherState[1].pHP, otherState[1].gnHP, otherState[1].gnBuff)
                             
                             #print("popped!")
-                            nextDict[(pos, nextWS.stance)].add(nextState)
+                            nextDict[nextPos].add(nextState)
                         else:
                             if less == False:
-                                nextDict[(pos, nextWS.stance)].add(nextState)
+                                nextDict[nextPos].add(nextState)
+                        self.drawPileSize = len(nextPos.draw)
+                        self.discardPileSize = len(nextPos.discard)
+        
         self.stateDictionary = nextDict
         if len(self.stateDictionary) == 0:
             if self.winnable == None:
@@ -419,23 +366,24 @@ class StateManager:
         
 #################  #################
 
-MY_DECK = tuple([Card.STRIKE]*4+[Card.DEFEND]*3+[Card.ERUPTION,Card.VIGILANCE,Card.ASCENDERS_BANE])
+MY_DECK = tuple([Card.STRIKE]*4+[Card.STRIKE]*4+[Card.ERUPTION,Card.VIGILANCE,Card.ASCENDERS_BANE])
 
 nWins = 0
 nTotal = 0
 while nTotal < 10000:
     sm = StateManager(gnHP = 106, verbose = False, startDeck = START_DECK)
-    #print("turn 0 states:", sm.numStates())
+    print("turn 0 states:", sm.numStates())
     i = 0
     while sm.numStates():
+    #while i < 1:
         sm.nextTurn()
         i += 1
-        #print("turn", i, "states:", sm.numStates())
-        #print("won yet?", sm.winnable)
-        #print()
+        print("turn", i, "states:", sm.numStates())
+        print("won yet?", sm.winnable)
+        print()
     if sm.winnable:
         nWins += 1
-    nTotal += 1
+    nTotal += 100000
     
     if nTotal % 100 == 0:
         #print(nWins, "out of", nTotal, ":", nWins/nTotal, "HANDS:", len(HANDS))
