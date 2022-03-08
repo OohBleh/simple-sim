@@ -207,6 +207,8 @@ def handResults(hand, wstate):
                 results.add(tuple([discardOrder]) + out)
     return results
 
+HANDS = dict()
+
 #ctr = 0
 #for hand in HANDS:
 #    ctr += len(HANDS[hand])
@@ -285,6 +287,7 @@ class StateManager:
             for (ws, cs) in self.stateDictionary[pos]:
                 if self.verbose:
                     print("  ws =", ws, "; cs =", cs, "...")
+                #needs to fix the hashing here
                 #if not (currPos.hand, ws) in HANDS:
                 #    HANDS[(currPos.hand, ws)] = handResults(currPos.hand, ws)
                 #for out in HANDS[(currPos.hand, ws)]:
