@@ -58,9 +58,25 @@ START_DECK = tuple([Card.STRIKE]*4+[Card.STRIKE]*4+[Card.ERUPTION,Card.VIGILANCE
 
 class CardPositions:
     def __init__(self, draw = [], hand = [], discard = START_DECK):
-        self.draw = tuple(draw)
-        self.hand = tuple(hand)
-        self.discard = tuple(discard)
+        self._draw = tuple(draw)
+        self._hand = tuple(hand)
+        self._discard = tuple(discard)
+    
+    @property
+    def draw(self):
+        return self._draw
+    @property
+    def hand(self):
+        return self._hand
+    @property
+    def discard(self):
+        return self._discard
+    
+    def __eq__(self, other):
+        return isinstance(other, CardPositions) and self._draw == other._draw and self._hand == other._hand and self._discard == other._discard
+    def __hash__(self):
+        return hash((self.draw, self.hand, self.discard))
+    
     def __str__(self):
         out = ''
         for card in self.draw:
@@ -89,9 +105,24 @@ class CardPositions:
 
 class CombatState:
     def __init__(self, pHP = 61, gnHP = 106, gnBuff = 0):
-        self.pHP = pHP
-        self.gnHP = gnHP
-        self.gnBuff = gnBuff
+        self._pHP = pHP
+        self._gnHP = gnHP
+        self._gnBuff = gnBuff
+    @property
+    def pHP(self):
+        return self._pHP
+    @property
+    def gnHP(self):
+        return self._gnHP
+    @property
+    def gnBuff(self):
+        return self._gnBuff
+    
+    def __eq__(self, other):
+        return isinstance(other, CombatState) and self.pHP == other.pHP and self.gnHP == other.gnHP and self._gnBuff == other._gnBuff
+    def __hash__(self):
+        return hash((self.pHP, self.gnHP, self.gnBuff))
+    
     def __str__(self):
         return f'pHP = {self.pHP}, gnHP = {self.gnHP}, gnBuff = {self.gnBuff}'
 
@@ -105,8 +136,19 @@ STANCE_NAMES = ['none', 'neutral', 'wrath', 'calm']
 
 class WatcherState:
     def __init__(self, stance = Stance.NEUTRAL, hasMiracle = True):
-        self.stance = stance
-        self.hasMiracle = hasMiracle
+        self._stance = stance
+        self._hasMiracle = hasMiracle
+    
+    @property
+    def stance(self):
+        return self._stance
+    def hasMiracle(self):
+        return self._hasMiracle
+    
+    def __eq__(self, other):
+        return isinstance(other, WatcherState) and self.stance is other.stance and self.hasMiracle is other.hasMiracle
+    def __hash__(self):
+        return hash((self.stance, self.hasMiracle))
     def __str__(self):
         if self.hasMiracle:
             return STANCE_NAMES[self.stance.value] + ', 1 miracle'
@@ -220,9 +262,11 @@ def compareStates(state1, state2):
     ws1, gs1 = state1
     ws2, gs2 = state2
     
-    if not ws1.stance is ws2.stance:
-        lesser = ws1.stance is Stance.NEUTRAL and ws2.stance is Stance.CALM
-        greater = ws2.stance is Stance.CALM and ws2.stance is Stance.NEUTRAL
+    if ws1.stance is Stance.WRATH or ws2.stance is Stance.WRATH:
+        return 
+    
+    lesser = ws1.stance is Stance.NEUTRAL and ws2.stance is Stance.CALM
+    greater = ws2.stance is Stance.CALM and ws2.stance is Stance.NEUTRAL
     
     lesser = lesser and (ws2.hasMiracle or not ws1.hasMiracle)
     lesser = lesser and gs1.pHP <= gs2.pHP
@@ -285,13 +329,16 @@ class StateManager:
             if self.verbose:
                 print(pos, "draws into", currPos)
             for (ws, cs) in self.stateDictionary[pos]:
+                #print("len(HANDS) =", len(HANDS))
+                
                 if self.verbose:
                     print("  ws =", ws, "; cs =", cs, "...")
+                
                 #needs to fix the hashing here
-                #if not (currPos.hand, ws) in HANDS:
-                #    HANDS[(currPos.hand, ws)] = handResults(currPos.hand, ws)
+                if not (currPos.hand, ws) in HANDS:
+                    HANDS[(currPos.hand, ws)] = handResults(currPos.hand, ws)
                 #for out in HANDS[(currPos.hand, ws)]:
-                hr = handResults(currPos.hand, ws)
+                hr = HANDS[(currPos.hand, ws)]
                 for out in hr:
                     if self.verbose:
                         discardString = ''
