@@ -258,21 +258,14 @@ def handResults(hand, wstate):
                 results.add(tuple([discardOrder]) + out)
     return results
 
-def memorizeHands():
+def memorizeHands(myDeck = START_DECK):
     HANDS = dict()
-    for hset in permutations(range(len(START_DECK)), 5):
-        hand = tuple([START_DECK[i] for i in hset])
-        #hstr = ''
-        #for c in hand:
-        #    hstr += CARD_NAMES[c.value]
-        #print(hstr)
+    for hand in permutations(myDeck, 5):
         for wstate in WATCHER_STATES:
             if not (hand, wstate) in HANDS:
                 HANDS[(hand, wstate)] = handResults(hand, wstate)
     return HANDS
 
-HANDS = memorizeHands()
-print("len(HANDS)", len(HANDS))
 ################# END OF PRE-COMPUTED DATA #################
 
 def compareStates(state1, state2):
@@ -305,10 +298,10 @@ def compareStates(state1, state2):
 
 class StateManager:
     def __init__(self, pHP = 61, gnHP = 106, startDeck = START_DECK, verbose = False):
-        self.turn = 0
-        self.shuffler = random.Random()
-        self.verbose = verbose
-        self.winnable = None
+        self._turn = 0
+        self._shuffler = random.Random()
+        self._verbose = verbose
+        self._winnable = None
         
         startPositions = CardPositions(discard = startDeck)
         startWatcher = WatcherState()
@@ -317,24 +310,39 @@ class StateManager:
         self.discardPileSize = len(startPositions.discard)
         
         # group CombatStates by CardPositions & stance
-        self.stateDictionary = dict()
-        self.stateDictionary[startPositions] = set([(startWatcher, startCombat)])
+        self._stateDictionary = dict()
+        self._stateDictionary[startPositions] = set([(startWatcher, startCombat)])
     
+    @property
     def numStates(self):
         ctr = 0
         for elt in self.stateDictionary:
             ctr += len(self.stateDictionary[elt])
         return ctr
+    @property
+    def stateDictionary(self):
+        return self._stateDictionary
+    @property
+    def winnable(self):
+        return self._winnable
+    @property
+    def turn(self):
+        return self._turn
+    @property
+    def verbose(self):
+        return self._verbose
     
+    def setWinnable(self, value):
+        self._winnable = value
     def nextTurn(self):
         if len(self.stateDictionary) == 0:
             return 
         
-        self.turn += 1
+        self._turn += 1
         
         if self.drawPileSize < 5:
             sigma = [i for i in range(self.discardPileSize)]
-            self.shuffler.shuffle(sigma)
+            self._shuffler.shuffle(sigma)
         else:
             sigma = None
         
@@ -342,35 +350,15 @@ class StateManager:
             print("turn", self.turn, "shuffle =", sigma)
         nextDict = dict()
         
-        #ctr = 0
-        #bad_ctr = 0
-        #survive_ctr = 0
-        #total_ctr = 0
-        # the previous positions have hand = [] (discarded)
         for pos in self.stateDictionary:
             currPos = pos.nextPositions(sigma)
             if self.verbose:
                 print(pos, "draws into", currPos)
             for (ws, cs) in self.stateDictionary[pos]:
-                #ctr += 1
-                #if int(1.5*(16+cs.gnBuff)) >= cs.pHP + 4:
-                #    bad_ctr += 1
-                #if ctr % 1000 == 0:
-                #    print("ctrs =", bad_ctr, ctr, bad_ctr/ctr, "...", 
-                #    survive_ctr, total_ctr, survive_ctr/total_ctr)
-                #print("len(HANDS) =", len(HANDS))
-                
                 if self.verbose:
                     print("  ws =", ws, "; cs =", cs, "...")
                 
-                #needs to fix the hashing here
-                #if not (currPos.hand, ws) in HANDS:
-                #HANDS[(currPos.hand, ws)] = handResults(currPos.hand, ws)
-                
-                #for out in HANDS[(currPos.hand, ws)]:
-                #hr = handResults(currPos.hand, ws)
                 hr = HANDS[(currPos.hand, ws)]
-                #total_ctr += len(hr)
                 for out in hr:
                     if self.verbose:
                         discardString = ''
@@ -378,6 +366,7 @@ class StateManager:
                             discardString += CARD_NAMES[card.value]
                         print("    result =", discardString, out[1], 
                         out[2:], "...")
+                    
                     # out = (discardOrder, endWatcherState, damage, block, buffGain)
                     nextPos = CardPositions(draw = currPos.draw, hand = [], 
                     discard = currPos.discard + out[0])
@@ -385,7 +374,7 @@ class StateManager:
                     newGNHP = cs.gnHP - out[2]
                     
                     if self.turn == 1:
-                        nextCS = CombatState(pHP = cs.pHP, gnHP = cs.gnHP - out[2])
+                        nextCS = CombatState(pHP = cs.pHP, gnHP = newGNHP)
                     else:
                         nextBuff = cs.gnBuff + out[4]
                         if self.turn % 3 == 2:
@@ -402,17 +391,15 @@ class StateManager:
                             if lostHP < 0:
                                 lostHP = 0
                         nextCS = CombatState(pHP = cs.pHP - lostHP, 
-                        gnHP = cs.gnHP - out[2], gnBuff = nextBuff)
+                        gnHP = newGNHP, gnBuff = nextBuff)
                     
                     if self.verbose:
                         print("    results in:", nextPos, nextWS, nextCS)
                     
                     if nextCS.gnHP <= 0:
-                        self.winnable = True
-                        #survive_ctr += 1
-                    
+                        self.setWinnable(True)
+                        
                     if nextCS.pHP > 0:
-                        #survive_ctr += 1
                         nextState = (nextWS, nextCS)
                         if not nextPos in nextDict:
                             nextDict[nextPos] = set()
@@ -433,7 +420,6 @@ class StateManager:
                                 #print("  otherState =", otherState[0].stance, otherState[0].hasMiracle, 
                                 #otherState[1].pHP, otherState[1].gnHP, otherState[1].gnBuff)
                             
-                            #print("popped!")
                             nextDict[nextPos].add(nextState)
                         else:
                             if less is False:
@@ -441,37 +427,38 @@ class StateManager:
                         self.drawPileSize = len(nextPos.draw)
                         self.discardPileSize = len(nextPos.discard)
         
-        self.stateDictionary = nextDict
-        if len(self.stateDictionary) == 0:
+        self._stateDictionary = nextDict
+        if len(self._stateDictionary) == 0:
             if self.winnable is None:
-                self.winnable = False
+                self.setWinnable(False)
         if self.verbose:
             print("number of states:", self.numStates())
         
 #################  #################
 
-MY_DECK = tuple([Card.STRIKE]*4+[Card.STRIKE]*4+[Card.ERUPTION,Card.VIGILANCE,Card.ASCENDERS_BANE])
+MY_DECK = tuple([Card.STRIKE]*4+[Card.DEFEND]*4+[Card.ERUPTION,Card.VIGILANCE,Card.ASCENDERS_BANE])
+HANDS = memorizeHands(myDeck = MY_DECK)
+print("len(HANDS) =", len(HANDS))
 
 nWins = 0
 nTotal = 0
 while nTotal < 10000:
-    sm = StateManager(pHP = 61, gnHP = 106, verbose = False, startDeck = START_DECK)
-    #print("turn 0 states:", sm.numStates())
-    #i = 0
-    while sm.numStates():
+    sm = StateManager(pHP = 61, gnHP = 112, verbose = False, startDeck = MY_DECK)
+    print("turn 0 states:", sm.numStates)
+    i = 0
+    while sm.numStates:
     #while i < 1:
         sm.nextTurn()
-        #i += 1
-        #print("turn", i, "states:", sm.numStates())
-        #print("won yet?", sm.winnable)
-        #print()
+        i += 1
+        print("turn", i, "states:", sm.numStates)
     if sm.winnable:
         nWins += 1
+        print("won!")
     nTotal += 1
-    
-    if nTotal % 10 == 0:
+    print()
+    #if nTotal % 2 == 0:
         #print(nWins, "out of", nTotal, ":", nWins/nTotal, "HANDS:", len(HANDS))
-        print(nWins, "out of", nTotal, ":", nWins/nTotal)
+        #print(nWins, "out of", nTotal, ":", nWins/nTotal)
 
 print(nWins, "out of", nTotal, ":", nWins/nTotal)
 
