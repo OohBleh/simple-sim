@@ -483,13 +483,14 @@ def sampleSim(nTrials = 100, pHP = 61, gnHP = 106, verbose = False, startDeck = 
         
         #print()
     
-    print(nWins, "out of", nTrials, ":", nWins/nTrials)
+    print()
     return nWins
 
 NTRIALS = 100
 conditions = [(NTRIALS, 61, 106), (NTRIALS, 56, 106), (NTRIALS, 61, 112), (NTRIALS, 56, 112)]
 
 results = dict()
+print()
 for condition in conditions:
     results[condition] = sampleSim(nTrials = condition[0], pHP = condition[1], gnHP = condition[2])
 
