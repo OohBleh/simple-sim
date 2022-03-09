@@ -466,18 +466,22 @@ def sampleSim(nTrials = 100, pHP = 61, gnHP = 106, verbose = False, startDeck = 
     curr = 0
     while curr < nTrials:
         sm = StateManager(pHP = pHP, gnHP = gnHP, verbose = verbose, startDeck = startDeck)
-        print("turn 0 states:", sm.numStates)
+        #print("turn 0 states:", sm.numStates)
         i = 0
         while sm.numStates:
         #while i < 1:
             sm.nextTurn()
             i += 1
-            print("turn", i, "states:", sm.numStates)
+            #print("turn", i, "states:", sm.numStates)
         if sm.winnable:
             nWins += 1
-            print("won!")
+            #print("won!")
         curr += 1
-        print()
+        
+        if curr % 10 == 0:
+            print(nWins, "out of", curr, ":", nWins/curr)
+        
+        #print()
     
     print(nWins, "out of", nTrials, ":", nWins/nTrials)
     return nWins
