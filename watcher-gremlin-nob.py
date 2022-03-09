@@ -266,30 +266,51 @@ def memorizeHands(myDeck = START_DECK):
                 HANDS[(hand, wstate)] = handResults(hand, wstate)
     return HANDS
 
+STANCE_COMPARE = dict()
+def setStanceCompare():
+    for stance in STANCES:
+        STANCE_COMPARE[(stance, stance)] = (True, True)
+        if not (stance is Stance.WRATH):
+            STANCE_COMPARE[(Stance.WRATH, stance)] = None
+            STANCE_COMPARE[(stance, Stance.WRATH)] = None
+    STANCE_COMPARE[(Stance.NEUTRAL, Stance.CALM)] = (True, False)
+    STANCE_COMPARE[(Stance.CALM, Stance.NEUTRAL)] = (False, True)
+setStanceCompare()
+
+WATCHER_STATE_COMPARE = dict()
+def setWatcherStateCompare():    
+    for ws1 in WATCHER_STATES:
+        for ws2 in WATCHER_STATES:
+            out = STANCE_COMPARE[(ws1.stance, ws2.stance)]
+            if out is None:
+                WATCHER_STATE_COMPARE[(ws1, ws2)] = None
+            else:
+                lesser, greater = out
+                lesser = lesser and ((not ws1.hasMiracle) or ws2.hasMiracle)
+                greater = greater and ((not ws2.hasMiracle) or ws1.hasMiracle)
+                if lesser or greater:
+                    WATCHER_STATE_COMPARE[(ws1, ws2)] = (lesser, greater)
+                else:
+                    WATCHER_STATE_COMPARE[(ws1, ws2)] = None
+setWatcherStateCompare()
 ################# END OF PRE-COMPUTED DATA #################
 
+# None: states incomparable
+# True: state1 <= state2
+# False: state1 > state2
 def compareStates(state1, state2):
     ws1, gs1 = state1
     ws2, gs2 = state2
     
-    if ws1.stance is Stance.WRATH or ws2.stance is Stance.WRATH:
-        return 
+    out = WATCHER_STATE_COMPARE[(ws1, ws2)]
+    if out is None:
+        return
     
-    lesser = ws1.stance is Stance.NEUTRAL and ws2.stance is Stance.CALM
-    greater = ws2.stance is Stance.CALM and ws2.stance is Stance.NEUTRAL
-    
-    lesser = lesser and (ws2.hasMiracle or not ws1.hasMiracle)
-    lesser = lesser and gs1.pHP <= gs2.pHP
-    lesser = lesser and gs1.gnHP >= gs2.gnHP
-    lesser = lesser and gs1.gnBuff >= gs2.gnBuff
-    
-    greater = greater and (ws1.hasMiracle or not ws2.hasMiracle)
-    greater = greater and gs2.pHP <= gs1.pHP
-    greater = greater and gs2.gnHP >= gs1.gnHP
-    greater = greater and gs2.gnBuff >= gs1.gnBuff
-    
+    lesser = out[0] and (gs1.pHP <= gs2.pHP) and (gs1.gnHP >= gs2.gnHP) and (gs1.gnBuff >= gs2.gnBuff)
     if lesser:
         return True
+    
+    greater = out[1] and (gs2.pHP <= gs1.pHP) and (gs2.gnHP >= gs1.gnHP) and (gs2.gnBuff >= gs1.gnBuff)
     if greater:
         return False
     return 
@@ -416,7 +437,7 @@ class StateManager:
                             #print("nextState =", nextState[0].stance, nextState[0].hasMiracle, 
                             #nextState[1].pHP, nextState[1].gnHP, nextState[1].gnBuff, "beats...")
                             for otherState in pops:
-                                nextDict[pos].remove(otherState)
+                                nextDict[nextPos].remove(otherState)
                                 #print("  otherState =", otherState[0].stance, otherState[0].hasMiracle, 
                                 #otherState[1].pHP, otherState[1].gnHP, otherState[1].gnBuff)
                             
@@ -432,7 +453,7 @@ class StateManager:
             if self.winnable is None:
                 self.setWinnable(False)
         if self.verbose:
-            print("number of states:", self.numStates())
+            print("number of states:", self.numStates)
         
 #################  #################
 
