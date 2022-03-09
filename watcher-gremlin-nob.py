@@ -440,25 +440,34 @@ MY_DECK = tuple([Card.STRIKE]*4+[Card.DEFEND]*4+[Card.ERUPTION,Card.VIGILANCE,Ca
 HANDS = memorizeHands(myDeck = MY_DECK)
 print("len(HANDS) =", len(HANDS))
 
-nWins = 0
-nTotal = 0
-while nTotal < 10000:
-    sm = StateManager(pHP = 61, gnHP = 112, verbose = False, startDeck = MY_DECK)
-    print("turn 0 states:", sm.numStates)
-    i = 0
-    while sm.numStates:
-    #while i < 1:
-        sm.nextTurn()
-        i += 1
-        print("turn", i, "states:", sm.numStates)
-    if sm.winnable:
-        nWins += 1
-        print("won!")
-    nTotal += 1
-    print()
-    #if nTotal % 2 == 0:
-        #print(nWins, "out of", nTotal, ":", nWins/nTotal, "HANDS:", len(HANDS))
-        #print(nWins, "out of", nTotal, ":", nWins/nTotal)
+def sampleSim(nTrials = 100, pHP = 61, gnHP = 106, verbose = False, startDeck = MY_DECK):
+    nWins = 0
+    curr = 0
+    while curr < nTrials:
+        sm = StateManager(pHP = pHP, gnHP = gnHP, verbose = verbose, startDeck = startDeck)
+        print("turn 0 states:", sm.numStates)
+        i = 0
+        while sm.numStates:
+        #while i < 1:
+            sm.nextTurn()
+            i += 1
+            print("turn", i, "states:", sm.numStates)
+        if sm.winnable:
+            nWins += 1
+            print("won!")
+        curr += 1
+        print()
+    
+    print(nWins, "out of", nTrials, ":", nWins/nTrials)
+    return nWins
 
-print(nWins, "out of", nTotal, ":", nWins/nTotal)
+NTRIALS = 100
+conditions = [(NTRIALS, 61, 106), (NTRIALS, 56, 106), (NTRIALS, 61, 112), (NTRIALS, 56, 112)]
 
+results = dict()
+for condition in conditions:
+    results[condition] = sampleSim(nTrials = condition[0], pHP = condition[1], gnHP = condition[2])
+
+for condition in conditions:
+    print("conditions =", condition, "\tresults:", 
+    results[condition], "/", condition[0], "=", results[condition]/condition[0])
