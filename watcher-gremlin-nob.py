@@ -157,7 +157,6 @@ class WatcherState:
             return STANCE_NAMES[self.stance.value] + ', 0 miracle' 
 
 
-
 #ws1 = WatcherState()
 #ws2 = WatcherState()
 #wset = set([(Card.STRIKE, ws1)])
@@ -318,11 +317,23 @@ def compareStates(state1, state2):
 # 
 
 class StateManager:
-    def __init__(self, pHP = 61, gnHP = 106, startDeck = START_DECK, verbose = False):
+    def __init__(self, pHP = 61, gnHP = 106, startDeck = START_DECK, verbose = False, shuffles = None):
         self._turn = 0
-        self._shuffler = random.Random()
+        if shuffles is None:
+            self._shuffler = random.Random()
+            self._shuffles = []
+            
+            for i in range(20):
+                shuffs = [None]
+                for j in range(1, 20):
+                    sigma = [k for k in range(j)]
+                    self._shuffler.shuffle(sigma)
+                    shuffs.append(sigma)
+                self._shuffles.append(shuffs)
+        
         self._verbose = verbose
         self._winnable = None
+        self._extraDamage = None
         
         startPositions = CardPositions(discard = startDeck)
         startWatcher = WatcherState()
@@ -352,9 +363,18 @@ class StateManager:
     @property
     def verbose(self):
         return self._verbose
+    @property
+    def extraDamage(self):
+        return self._extraDamage
     
     def setWinnable(self, value):
         self._winnable = value
+    def updateExtraDamage(self, value):
+        if self._extraDamage is None:
+            self._extraDamage = value
+        else:
+            self._extraDamage = max(value, self._extraDamage)
+    
     def nextTurn(self):
         if len(self.stateDictionary) == 0:
             return 
@@ -419,6 +439,7 @@ class StateManager:
                     
                     if nextCS.gnHP <= 0:
                         self.setWinnable(True)
+                        self.updateExtraDamage(-nextCS.gnHP)
                         
                     if nextCS.pHP > 0:
                         nextState = (nextWS, nextCS)
@@ -464,6 +485,7 @@ print("len(HANDS) =", len(HANDS))
 def sampleSim(nTrials = 100, pHP = 61, gnHP = 106, verbose = False, startDeck = MY_DECK):
     nWins = 0
     curr = 0
+    extraDamage = dict()
     while curr < nTrials:
         sm = StateManager(pHP = pHP, gnHP = gnHP, verbose = verbose, startDeck = startDeck)
         #print("turn 0 states:", sm.numStates)
@@ -475,11 +497,15 @@ def sampleSim(nTrials = 100, pHP = 61, gnHP = 106, verbose = False, startDeck = 
             #print("turn", i, "states:", sm.numStates)
         if sm.winnable:
             nWins += 1
+            if sm.extraDamage in extraDamage:
+                extraDamage[sm.extraDamage] += 1
+            else:
+                extraDamage[sm.extraDamage] = 1
             #print("won!")
         curr += 1
         
         if curr % 10 == 0:
-            print(nWins, "out of", curr, ":", nWins/curr)
+            print(nWins, "out of", curr, ":", nWins/curr, "; extra damage =", extraDamage)
         
         #print()
     
@@ -487,7 +513,7 @@ def sampleSim(nTrials = 100, pHP = 61, gnHP = 106, verbose = False, startDeck = 
     return nWins
 
 NTRIALS = 100
-conditions = [(NTRIALS, 61, 106), (NTRIALS, 56, 106), (NTRIALS, 61, 112), (NTRIALS, 56, 112)]
+conditions = [(NTRIALS, 61, 106), (NTRIALS, 56, 106)]
 
 results = dict()
 print()
