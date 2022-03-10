@@ -356,12 +356,13 @@ class StateManager:
         self._verbose = verbose
         self._winnable = None
         self._extraDamage = None
+        self._nShuffles = 0
         
         startPositions = CardPositions(discard = startDeck)
         startWatcher = WatcherState()
         startCombat = CombatState(pHP = pHP, gnHP = gnHP)
-        self.drawPileSize = len(startPositions.draw)
-        self.discardPileSize = len(startPositions.discard)
+        self._drawPileSize = len(startPositions.draw)
+        self._discardPileSize = len(startPositions.discard)
         
         # group CombatStates by CardPositions & stance
         self._stateDictionary = dict()
@@ -403,9 +404,11 @@ class StateManager:
         
         self._turn += 1
         
-        if self.drawPileSize < 5:
-            sigma = [i for i in range(self.discardPileSize)]
-            self._shuffler.shuffle(sigma)
+        if self._drawPileSize < 5:
+            #sigma = [i for i in range(self._discardPileSize)]
+            #self._shuffler.shuffle(sigma)
+            sigma = self._shuffles[self._nShuffles][self._discardPileSize]
+            self._nShuffles += 1
         else:
             sigma = None
         
@@ -488,8 +491,8 @@ class StateManager:
                         else:
                             if less is False:
                                 nextDict[nextPos].add(nextState)
-                        self.drawPileSize = len(nextPos.draw)
-                        self.discardPileSize = len(nextPos.discard)
+                        self._drawPileSize = len(nextPos.draw)
+                        self._discardPileSize = len(nextPos.discard)
         
         self._stateDictionary = nextDict
         if len(self._stateDictionary) == 0:
