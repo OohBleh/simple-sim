@@ -342,14 +342,17 @@ class StateManager:
     def __init__(self, pHP = 61, gnHP = 106, startDeck = START_DECK, verbose = False, shuffles = None):
         self._turn = 0
         if shuffles is None:
-            self._shuffler = random.Random()
+            #self._shuffler = random.Random()
             self._shuffles = []
+            shuffler = random.Random()
+            shuffles = []
             
             for i in range(20):
                 shuffs = [None]
                 for j in range(1, 20):
                     sigma = [k for k in range(j)]
-                    self._shuffler.shuffle(sigma)
+                    #self._shuffler.shuffle(sigma)
+                    shuffler.shuffle(sigma)
                     shuffs.append(sigma)
                 self._shuffles.append(shuffs)
         
