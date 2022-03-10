@@ -264,6 +264,7 @@ def memorizeHands(myDeck = START_DECK):
             if not (hand, wstate) in HANDS:
                 HANDS[(hand, wstate)] = handResults(hand, wstate)
     return HANDS
+                        
 
 STANCE_COMPARE = dict()
 def setStanceCompare():
@@ -292,6 +293,27 @@ def setWatcherStateCompare():
                 else:
                     WATCHER_STATE_COMPARE[(ws1, ws2)] = None
 setWatcherStateCompare()
+
+def washHands():
+    for hand in HANDS:
+        pops = set()
+        for res1 in HANDS[hand]:
+            do1, ws1, dam1, block1, buff1 = res1
+            for res2 in HANDS[hand]:
+                if res1 != res2:
+                    # out = discardOrder, endWatcherState, damage, block, buffGain
+                    do2, ws2, dam2, block2, buff2 = res2
+                    if do1 == do2 and dam1 <= dam2 and block1 <= block2 and buff1 >= buff2:
+                        comp = WATCHER_STATE_COMPARE[(ws1, ws2)]
+                        if not comp is None and comp[0] is True:
+                            pops.add(res1)
+                            #print("res1 =", res1)
+                            #print("<")
+                            #print("res2 =", res2)
+                            #print()
+        for res in pops:
+            HANDS[hand].remove(res)
+
 ################# END OF PRE-COMPUTED DATA #################
 
 # None: states incomparable
@@ -480,7 +502,15 @@ class StateManager:
 
 MY_DECK = tuple([Card.STRIKE]*4+[Card.DEFEND]*4+[Card.ERUPTION,Card.VIGILANCE,Card.ASCENDERS_BANE])
 HANDS = memorizeHands(myDeck = MY_DECK)
-print("len(HANDS) =", len(HANDS))
+hsize = 0
+for hand in HANDS:
+    hsize += len(HANDS[hand])
+print("len(HANDS) =", len(HANDS), "size =", hsize)
+washHands()
+hsize = 0
+for hand in HANDS:
+    hsize += len(HANDS[hand])
+print("len(HANDS) =", len(HANDS), "size =", hsize)
 
 def sampleSim(nTrials = 100, pHP = 61, gnHP = 106, verbose = False, startDeck = MY_DECK):
     nWins = 0
