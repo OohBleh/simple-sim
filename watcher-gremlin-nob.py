@@ -336,11 +336,10 @@ def compareStates(state1, state2):
         return False
     return 
 
-# 
-
 class StateManager:
-    def __init__(self, pHP = 61, gnHP = 106, startDeck = START_DECK, verbose = False, shuffles = None):
+    def __init__(self, pHP = 61, gnHP = 106, startDeck = START_DECK, verbose = False, shuffles = None, makeGraph = False):
         self._turn = 0
+        self._makeGraph = makeGraph
         if shuffles is None:
             #self._shuffler = random.Random()
             self._shuffles = []
@@ -355,6 +354,15 @@ class StateManager:
                     shuffler.shuffle(sigma)
                     shuffs.append(sigma)
                 self._shuffles.append(shuffs)
+        
+        if makeGraph:
+            self._forward = dict()           
+            self._backward = dict()
+            self._dominate = dict()
+        else:
+            self._forward = None
+            self._backward = None
+            self._dominate = None
         
         self._verbose = verbose
         self._winnable = None
@@ -523,7 +531,7 @@ def sampleSim(nTrials = 100, pHP = 61, gnHP = 106, verbose = False, startDeck = 
     curr = 0
     extraDamage = dict()
     while curr < nTrials:
-        sm = StateManager(pHP = pHP, gnHP = gnHP, verbose = verbose, startDeck = startDeck)
+        sm = StateManager(pHP = pHP, gnHP = gnHP, verbose = verbose, startDeck = startDeck, makeGraph = True)
         #print("turn 0 states:", sm.numStates)
         i = 0
         while sm.numStates:
