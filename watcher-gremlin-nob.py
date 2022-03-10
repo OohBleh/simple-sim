@@ -400,7 +400,8 @@ class StateManager:
     def __init__(self, pHP = 61, gnHP = 106, startDeck = START_DECK, verbose = False, shuffles = None, makeGraph = False):
         self._turn = 0
         self._makeGraph = makeGraph
-        self._winStates = set()
+        self._winStates = dict()
+        self._winStats = set()
         
         if shuffles is None:
             #self._shuffler = random.Random()
@@ -425,7 +426,6 @@ class StateManager:
         
         self._verbose = verbose
         self._winnable = None
-        self._extraDamage = None
         self._nShuffles = 0
         
         startPositions = CardPositions(discard = startDeck)
@@ -457,24 +457,45 @@ class StateManager:
     def turn(self):
         return self._turn
     @property
-    def extraDamage(self):
-        return self._extraDamage
+    def winStats(self):
+        return self._winStats
+    
+    @property
+    def winStates(self):
+        return self._winStates
     
     def setWinnable(self, value):
         self._winnable = value
-    def updateExtraDamage(self, value):
-        if self._extraDamage is None:
-            self._extraDamage = value
-        else:
-            self._extraDamage = max(value, self._extraDamage)
+    def updateWins(self, winState):
+        
+        self.setWinnable(True)
+        self._winStates[winState] = True
+        
+        pHP1, gnHP1 = winState.combatState.pHP, winState.combatState.gnHP
+        for otherWinState in self._winStates:
+            if self._winStates[otherWinState]:
+                pHP2, gnHP2 = otherWinState.combatState.pHP, otherWinState.combatState.gnHP
+                if pHP1 >= pHP2 and gnHP1 < gnHP2:
+                    self._winStates[otherWinState] = False
+                if pHP1 > pHP2 and gnHP1 <= gnHP2:
+                    self._winStates[otherWinState] = False
+                if pHP1 <= pHP2 and gnHP1 > gnHP2:
+                    self._winStates[winState] = False
+                if pHP1 < pHP2 and gnHP1 >= gnHP2:
+                    self._winStates[winState] = False
+    
+    def updateWinStats(self):
+        self._winStats = set()
+        for winState in self._winStates:
+            if self._winStates[winState]:
+                self._winStats.add((winState.combatState.pHP, winState.combatState.gnHP))
+    
     def getWinPath(self):
         if self.winnable and self._makeGraph:
             for winState in self.winStates:
                 return self._digraph.maximalPath(winState)
+    
     def nextTurn(self):
-        if len(self.stateDictionary) == 0:
-            return 
-        
         self._turn += 1
         
         if self._drawPileSize < 5:
@@ -546,12 +567,11 @@ class StateManager:
                         self._digraph.addArc(currFS, nextFS)
                     
                     if nextCS.gnHP <= 0:
-                        self.setWinnable(True)
-                        self.updateExtraDamage(-nextCS.gnHP)
                         
                         wonCS = CombatState(pHP = cs.pHP, gnHP = nextCS.gnHP, gnBuff = nextCS.gnBuff)
                         wonFS = FullState(cardPositions = nextPos, watcherState = nextWS, combatState = wonCS, turn = self.turn)
-                        self._winStates.add(wonFS)
+                        
+                        self.updateWins(wonFS)
                         
                         if self._makeGraph:
                             self._digraph.addArc(currFS, wonFS)
@@ -591,6 +611,10 @@ class StateManager:
         if self._verbose:
             print("number of states:", self.numStates)
         
+        #print("actually setting winStats...")
+        self.updateWinStats()
+        #print("set!")
+        
 #################  #################
 
 MY_DECK = tuple([Card.STRIKE]*4+[Card.DEFEND]*4+[Card.ERUPTION,Card.VIGILANCE,Card.ASCENDERS_BANE])
@@ -608,9 +632,9 @@ print("len(HANDS) =", len(HANDS), "size =", hsize)
 def sampleSim(nTrials = 100, pHP = 61, gnHP = 106, verbose = False, startDeck = MY_DECK):
     nWins = 0
     curr = 0
-    extraDamage = dict()
+    winStats = dict()
     while curr < nTrials:
-        sm = StateManager(pHP = pHP, gnHP = gnHP, verbose = verbose, startDeck = startDeck, makeGraph = True)
+        sm = StateManager(pHP = pHP, gnHP = gnHP, verbose = verbose, startDeck = startDeck, makeGraph = False)
         #print("turn 0 states:", sm.numStates)
         i = 0
         while sm.numStates:
@@ -620,10 +644,19 @@ def sampleSim(nTrials = 100, pHP = 61, gnHP = 106, verbose = False, startDeck = 
             #print("turn", i, "states:", sm.numStates)
         if sm.winnable:
             nWins += 1
-            if sm.extraDamage in extraDamage:
-                extraDamage[sm.extraDamage] += 1
+            out = list(sm.winStats)
+            out.sort()
+            out = tuple(out)
+            #print("sm.winStates =")
+            #for winState in sm.winStates:
+            #    if sm.winStates[winState]:
+            #        print("\t", winState)
+            #print("out =", out, "sm.winStats =", sm.winStats)
+            if out in winStats:
+                winStats[out] += 1
             else:
-                extraDamage[sm.extraDamage] = 1
+                winStats[out] = 1
+            
             winpath = sm.getWinPath()
             if not (winpath is None):
                 print("winpath =")
@@ -631,15 +664,17 @@ def sampleSim(nTrials = 100, pHP = 61, gnHP = 106, verbose = False, startDeck = 
                     print("\t", elt)
         curr += 1
         
-        if True: #curr % 10 == 0:
-            print(nWins, "out of", curr, ":", nWins/curr, "; extra damage =", extraDamage)
+        if curr % 10 == 0:
+            print(nWins, "out of", curr, ":", nWins/curr, "; win stats =")
+            for winStat in winStats:
+                print("\t", winStats[winStat], "times", winStat)
         
         #print()
     
     print()
     return nWins
 
-NTRIALS = 100
+NTRIALS = 1000
 conditions = [(NTRIALS, 61, 106), (NTRIALS, 56, 106)]
 
 results = dict()
