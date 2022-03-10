@@ -541,14 +541,20 @@ class StateManager:
                     if self._verbose:
                         print("    results in:", nextPos, nextWS, nextCS)
                     
+                    nextFS = FullState(cardPositions = nextPos, watcherState = nextWS, combatState = nextCS, turn = self.turn)
                     if self._makeGraph:
-                        nextFS = FullState(cardPositions = nextPos, watcherState = nextWS, combatState = nextCS, turn = self.turn)
                         self._digraph.addArc(currFS, nextFS)
                     
                     if nextCS.gnHP <= 0:
                         self.setWinnable(True)
                         self.updateExtraDamage(-nextCS.gnHP)
-                        self._winStates.add(nextFS)
+                        
+                        wonCS = CombatState(pHP = cs.pHP, gnHP = nextCS.gnHP, gnBuff = nextCS.gnBuff)
+                        wonFS = FullState(cardPositions = nextPos, watcherState = nextWS, combatState = wonCS, turn = self.turn)
+                        self._winStates.add(wonFS)
+                        
+                        if self._makeGraph:
+                            self._digraph.addArc(currFS, wonFS)
                         
                     if nextCS.pHP > 0:
                         nextState = (nextWS, nextCS)
