@@ -316,6 +316,38 @@ def washHands():
 
 ################# END OF PRE-COMPUTED DATA #################
 
+class FullState:
+    def __init__(self, cardPositions = CardPositions(), watcherState = WatcherState(), 
+    combatState = CombatState(), turn = 0):
+        self._cardPositions = cardPositions
+        self._watcherState = watcherState
+        self._combatState = combatState
+        self._turn = turn
+        
+    @property
+    def cardPositions(self):
+        return self._cardPositions
+    @property
+    def watcherState(self):
+        return self._watcherState
+    @property
+    def combatState(self):
+        return self._combatState
+    @property
+    def turn(self):
+        return self._turn
+    
+    def __eq__(self, other):
+        if isinstance(other, FullState) and self.turn == other.turn and self.cardPositions == other.cardPositions:
+            if self.watcherState == other.watcherState and self.combatState == other.combatState:
+                return True
+        return False
+    def __hash__(self):
+        return hash((self.cardPositions, self.watcherState, self.combatState, self.turn))
+    
+    def __str__(self):
+        return f'turn = {self.turn}, combatState = {self.combatState}, cardPositions = {self.cardPositions}, watcherState = {self.watcherState}'
+
 # None: states incomparable
 # True: state1 <= state2
 # False: state1 > state2
@@ -336,10 +368,40 @@ def compareStates(state1, state2):
         return False
     return 
 
+class SparseDigraph:
+    def __init__(self):
+        self._outward = dict()
+        self._inward = dict()
+    @property
+    def outward(self):
+        return self._outward
+    @property
+    def inward(self):
+        return self._inward
+    def addArc(self, fs1, fs2):
+        if fs1 in self.outward:
+            self.outward[fs1].add(fs2)
+        else:
+            self.outward[fs1] = set([fs2])
+        if fs2 in self.inward:
+            self.inward[fs2].add(fs1)
+        else:
+            self.inward[fs2] = set([fs1])
+    def maximalPath(self, endNode):
+        currNode = endNode
+        path = []
+        while currNode in self.inward:
+            path.append(currNode)
+            currNode = list(self.inward[currNode])[0]
+        path.append(currNode)
+        return path
+    
 class StateManager:
     def __init__(self, pHP = 61, gnHP = 106, startDeck = START_DECK, verbose = False, shuffles = None, makeGraph = False):
         self._turn = 0
         self._makeGraph = makeGraph
+        self._winStates = set()
+        
         if shuffles is None:
             #self._shuffler = random.Random()
             self._shuffles = []
@@ -355,14 +417,11 @@ class StateManager:
                     shuffs.append(sigma)
                 self._shuffles.append(shuffs)
         
-        if makeGraph:
-            self._forward = dict()           
-            self._backward = dict()
-            self._dominate = dict()
+        if self._makeGraph:
+            self._digraph = SparseDigraph()
         else:
-            self._forward = None
-            self._backward = None
-            self._dominate = None
+            self._digraph = None
+        self._winningLine = None
         
         self._verbose = verbose
         self._winnable = None
@@ -380,6 +439,9 @@ class StateManager:
         self._stateDictionary[startPositions] = set([(startWatcher, startCombat)])
     
     @property
+    def winStates(self):
+        return self._winStates
+    @property
     def numStates(self):
         ctr = 0
         for elt in self.stateDictionary:
@@ -395,9 +457,6 @@ class StateManager:
     def turn(self):
         return self._turn
     @property
-    def verbose(self):
-        return self._verbose
-    @property
     def extraDamage(self):
         return self._extraDamage
     
@@ -408,7 +467,10 @@ class StateManager:
             self._extraDamage = value
         else:
             self._extraDamage = max(value, self._extraDamage)
-    
+    def getWinPath(self):
+        if self.winnable and self._makeGraph:
+            for winState in self.winStates:
+                return self._digraph.maximalPath(winState)
     def nextTurn(self):
         if len(self.stateDictionary) == 0:
             return 
@@ -423,21 +485,27 @@ class StateManager:
         else:
             sigma = None
         
-        if self.verbose:
+        if self._verbose:
             print("turn", self.turn, "shuffle =", sigma)
         nextDict = dict()
         
         for pos in self.stateDictionary:
+            
             currPos = pos.nextPositions(sigma)
-            if self.verbose:
+            if self._verbose:
                 print(pos, "draws into", currPos)
             for (ws, cs) in self.stateDictionary[pos]:
-                if self.verbose:
+                if self._verbose:
                     print("  ws =", ws, "; cs =", cs, "...")
+                
+                if self._makeGraph:
+                    prevFS = FullState(cardPositions = pos, watcherState = ws, combatState = cs, turn = self.turn-1)
+                    currFS = FullState(cardPositions = currPos, watcherState = ws, combatState = cs, turn = self.turn)
+                    self._digraph.addArc(prevFS, currFS)
                 
                 hr = HANDS[(currPos.hand, ws)]
                 for out in hr:
-                    if self.verbose:
+                    if self._verbose:
                         discardString = ''
                         for card in out[0]:
                             discardString += CARD_NAMES[card.value]
@@ -470,12 +538,17 @@ class StateManager:
                         nextCS = CombatState(pHP = cs.pHP - lostHP, 
                         gnHP = newGNHP, gnBuff = nextBuff)
                     
-                    if self.verbose:
+                    if self._verbose:
                         print("    results in:", nextPos, nextWS, nextCS)
+                    
+                    if self._makeGraph:
+                        nextFS = FullState(cardPositions = nextPos, watcherState = nextWS, combatState = nextCS, turn = self.turn)
+                        self._digraph.addArc(currFS, nextFS)
                     
                     if nextCS.gnHP <= 0:
                         self.setWinnable(True)
                         self.updateExtraDamage(-nextCS.gnHP)
+                        self._winStates.add(nextFS)
                         
                     if nextCS.pHP > 0:
                         nextState = (nextWS, nextCS)
@@ -509,7 +582,7 @@ class StateManager:
         if len(self._stateDictionary) == 0:
             if self.winnable is None:
                 self.setWinnable(False)
-        if self.verbose:
+        if self._verbose:
             print("number of states:", self.numStates)
         
 #################  #################
@@ -545,10 +618,14 @@ def sampleSim(nTrials = 100, pHP = 61, gnHP = 106, verbose = False, startDeck = 
                 extraDamage[sm.extraDamage] += 1
             else:
                 extraDamage[sm.extraDamage] = 1
-            #print("won!")
+            winpath = sm.getWinPath()
+            if not (winpath is None):
+                print("winpath =")
+                for elt in winpath:
+                    print("\t", elt)
         curr += 1
         
-        if curr % 10 == 0:
+        if True: #curr % 10 == 0:
             print(nWins, "out of", curr, ":", nWins/curr, "; extra damage =", extraDamage)
         
         #print()
