@@ -184,7 +184,7 @@ def playResult(cardSeq, watcherState):
     hasMiracle = watcherState.hasMiracle
     
     for card in cardSeq:
-        if card is Card.ASCENDERS_BANE:
+        if card is Card.ASCENDERS_BANE or card is Card.NONE:
             return 
         if card is Card.STRIKE:
             if E < 1:
@@ -619,7 +619,7 @@ class StateManager:
         
 #################  #################
 
-MY_DECK = tuple([Card.STRIKE]*4+[Card.DEFEND]*4+[Card.ERUPTION,Card.VIGILANCE,Card.ASCENDERS_BANE])
+MY_DECK = tuple([Card.STRIKE]*4+[Card.DEFEND]*4+[Card.ERUPTION,Card.VIGILANCE,Card.ASCENDERS_BANE]+[Card.NONE]*0)
 HANDS = memorizeHands(myDeck = MY_DECK)
 hsize = 0
 for hand in HANDS:
@@ -714,12 +714,12 @@ def sampleSim(nTrials = 100, pHP = 61, gnHP = 106, verbose = False, startDeck = 
             
         curr += 1
         
-        if curr % 10 == 0:
+        if curr % 100 == 0:
             print(nWins, "out of", curr, ":", nWins/curr, "; win stats =")
-            #for winStat in winStats:
-            #    print("\t", winStats[winStat], "times", winStat)
-            histo, xmin, xmax = histogramFromResults(winStats)
-            printHistogram(histo, xmin, xmax)
+            for winStat in winStats:
+                print("\t", winStats[winStat], "times", winStat)
+            #histo, xmin, xmax = histogramFromResults(winStats)
+            #printHistogram(histo, xmin, xmax)
         #print()
     
     print()
