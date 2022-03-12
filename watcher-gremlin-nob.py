@@ -492,8 +492,10 @@ class StateManager:
     
     def getWinPath(self):
         if self.winnable and self._makeGraph:
+            maxHP = max([winState.combatState.pHP for winState in self.winStates])
             for winState in self.winStates:
-                return self._digraph.maximalPath(winState)
+                if maxHP == winState.combatState.pHP:
+                    return self._digraph.maximalPath(winState)
     
     def nextTurn(self):
         self._turn += 1
@@ -629,6 +631,57 @@ for hand in HANDS:
     hsize += len(HANDS[hand])
 print("len(HANDS) =", len(HANDS), "size =", hsize)
 
+def histogramFromResults(mults):
+    
+    # get maximum HP from in survival scenario
+    minSurviveHP, maxSurviveHP = 100, 0
+    for multTup in mults:
+        for mult in multTup:
+            if mult[0] > maxSurviveHP:
+                maxSurviveHP = mult[0]
+            elif mult[0] < minSurviveHP:
+                minSurviveHP = mult[0]
+    
+    # dictionaries 
+    histo = dict()
+    for endHP in range(minSurviveHP, maxSurviveHP+1):
+        reqHP = 62 - endHP
+        histo[(reqHP, 106)] = 0
+        histo[(reqHP, 109)] = 0
+        histo[(reqHP, 112)] = 0
+        
+        # one set of mults / fight
+        for multTup in mults:
+            survives = [mult for mult in multTup if mult[0] >= endHP]
+            if survives:
+                maxDamageToNob = max([106 - mult[1] for mult in survives])
+                histo[(reqHP, 106)] += 1
+                if maxDamageToNob >= 109:
+                    histo[(reqHP, 109)] += 1
+                if maxDamageToNob >= 112:
+                    histo[(reqHP, 112)] += 1
+    return histo, 62-maxSurviveHP, 62-minSurviveHP
+    
+def printHistogram(histo, xmin, xmax):
+    hStrings = dict()
+    runMin, prevRes = None, None
+    for sHP in range(xmin, xmax+1):
+        currRes = (histo[(sHP, 106)], histo[(sHP, 109)], histo[(sHP, 112)])
+        if prevRes is None:
+            prevRes = currRes
+            runMin = sHP
+        if currRes != prevRes:
+            if runMin == sHP:
+                outLine = str(runMin) + '\t'
+            else:
+                outLine = str(runMin) + '...' + str(sHP) + '\t'
+            s106, s109, s112 = currRes[0], currRes[1], currRes[2]
+            outLine += 'x'*(s106-s109)+ 'y'*(s109-s112) + 'z'*s112 
+            print(outLine)
+            runMin, prevRes = None, None
+            
+            
+
 def sampleSim(nTrials = 100, pHP = 61, gnHP = 106, verbose = False, startDeck = MY_DECK):
     nWins = 0
     curr = 0
@@ -657,25 +710,23 @@ def sampleSim(nTrials = 100, pHP = 61, gnHP = 106, verbose = False, startDeck = 
             else:
                 winStats[out] = 1
             
-            winpath = sm.getWinPath()
-            if not (winpath is None):
-                print("winpath =")
-                for elt in winpath:
-                    print("\t", elt)
+            #maxHP = max([mult[0] for mult in out])
+            
         curr += 1
         
         if curr % 10 == 0:
             print(nWins, "out of", curr, ":", nWins/curr, "; win stats =")
-            for winStat in winStats:
-                print("\t", winStats[winStat], "times", winStat)
-        
+            #for winStat in winStats:
+            #    print("\t", winStats[winStat], "times", winStat)
+            histo, xmin, xmax = histogramFromResults(winStats)
+            printHistogram(histo, xmin, xmax)
         #print()
     
     print()
     return nWins
 
 NTRIALS = 1000
-conditions = [(NTRIALS, 61, 106), (NTRIALS, 56, 106)]
+conditions = [(NTRIALS, 61, 106)] #, (NTRIALS, 56, 106)]
 
 results = dict()
 print()
