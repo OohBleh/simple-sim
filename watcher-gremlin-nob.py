@@ -129,8 +129,33 @@ class CombatState:
     def gnBuff(self):
         return self._gnBuff
     
+    # <=
+    def __le__(self, other):
+        if self.pHP > other.pHP:
+            return False
+        if self.gnHP < other.gnHP:
+            return False
+        if self.gnBuff < other.gnBuff:
+            return False
+        return True
+    # >=
+    def __ge__(self, other):
+        return other <= self
+    
+    # ==
     def __eq__(self, other):
-        return isinstance(other, CombatState) and self.pHP == other.pHP and self.gnHP == other.gnHP and self._gnBuff == other._gnBuff
+        if self.pHP != other.pHP:
+            return False
+        if self.gnHP != other.gnHP:
+            return False
+        if self._gnBuff != other._gnBuff:
+            return False
+        return True
+    # !=
+    def __ne__(self, other):
+        return not (self == other)
+    
+    
     def __hash__(self):
         return hash((self.pHP, self.gnHP, self.gnBuff))
     
@@ -142,11 +167,13 @@ class Stance(Enum):
     NEUTRAL = 1
     WRATH = 2
     CALM = 3
-STANCES = [Stance.NONE, Stance.NEUTRAL, Stance.WRATH, Stance.CALM]
-STANCE_NAMES = ['none', 'neutral', 'wrath', 'calm']
+    DIVINITY = 4
+STANCES = [Stance.NONE, Stance.NEUTRAL, Stance.WRATH, Stance.CALM]#, Stance.DIVINITY]
+STANCE_NAMES = ['none', 'neutral', 'wrath', 'calm', 'divinity']
 
 class WatcherState:
-    def __init__(self, stance = Stance.NEUTRAL, nMiracles = 1, nProtects = 0):
+    def __init__(self, stance = Stance.NEUTRAL, nMiracles = 1, 
+    nProtects = 0):
         self._stance = stance
         self._nMiracles = nMiracles
         self._nProtects = nProtects
@@ -165,45 +192,27 @@ class WatcherState:
         return [Card.PROTECT]*self.nProtects
     
     # for comparisons...
-    # None means incomparable
-    # True/False means true/false
+    # true comparison --> True
+    # false comparison --> False
+    # incomparable --> False
     
     # <=
     def __le__(self, other):
+        # same stance required for comparability
         if self.stance == other.stance:
+            # must have fewer of each retainable (incl. Miracle)
             if self.nMiracles > other.nMiracles:
                 return False
             if self.nProtects > other.nProtects:
                 return False
             return True
+        else:
+            return False
     # >=
     def __ge__(self, other):
-        if self.stance == other.stance:
-            if self.nMiracles < other.nMiracles:
-                return False
-            if self.nProtects < other.nProtects:
-                return False
-            return True
+        return other <= self
     
-    # <
-    def __lt__(self, other):
-        if self <= other:
-            if self.nMiracles < other.nMiracles:
-                return True
-            if self.nProtects < other.nProtects:
-                return True
-            return False
-    
-    # >
-    def __gt__(self, other):
-        if self >= other:
-            if self.nMiracles > other.nMiracles:
-                return True
-            if self.nProtects > other.nProtects:
-                return True
-            return False
-    
-    # =
+    # ==
     def __eq__(self, other):
         if self.stance != other.stance:
             return False
@@ -213,18 +222,16 @@ class WatcherState:
             if self.nProtects != other.nProtects:
                 return False
             return True
-    
     # !=
     def __ne__(self, other):
-        if self.stance != other.stance:
-            return True
-        else:
-            if self.nMiracles != other.nMiracles:
-                return True
-            if self.nProtects != other.nProtects:
-                return True
-            return False
+        return not (self == other)
     
+    # <
+    def __lt__(self, other):
+        return self <= other and self != other
+    # >
+    def __gt__(self, other):
+        return other < self
     
     def __hash__(self):
         return hash((self.stance, self.nMiracles, self.nProtects))
