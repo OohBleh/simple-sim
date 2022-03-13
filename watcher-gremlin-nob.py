@@ -190,6 +190,7 @@ def playResult(cardSeq, watcherState):
             if E < 1:
                 if hasMiracle:
                     E += 1
+                    buffGain += 3
                     hasMiracle = False
                 else:
                     return
@@ -203,16 +204,18 @@ def playResult(cardSeq, watcherState):
             if E < 1:
                 if hasMiracle:
                     E += 1
+                    buffGain += 3
                     hasMiracle = False
                 else:
                     return
             E -= 1
             block += 5
-            buffGain = 3
+            buffGain += 3
         
         elif card is Card.ERUPTION:
             if E < 2:
                 if hasMiracle:
+                    buffGain += 3
                     E += 1
                     hasMiracle = False
                 else:
@@ -232,6 +235,7 @@ def playResult(cardSeq, watcherState):
             if E < 2:
                 if hasMiracle:
                     E += 1
+                    buffGain += 3
                     hasMiracle = False
                 else:
                     return
@@ -252,8 +256,10 @@ def handResults(hand, wstate):
             out = playResult(play, wstate)
             if out != None:
                 # out = endWatcherState, damage, block, buffGain
-                discardOrder = tuple(play + [hand[i] for i in range(5) if not i in sigma
-                and not hand[i] is Card.ASCENDERS_BANE])
+                discardOrder = [hand[i] for i in range(5) if not i in sigma
+                and not hand[i] is Card.ASCENDERS_BANE]
+                discardOrder.reverse()
+                discardOrder = tuple(play + discardOrder)
                 results.add(tuple([discardOrder]) + out)
     return results
 
@@ -409,14 +415,16 @@ class StateManager:
             shuffler = random.Random()
             shuffles = []
             
-            for i in range(20):
-                shuffs = [None]
-                for j in range(1, 20):
-                    sigma = [k for k in range(j)]
+            for i in range(17): # permutation length
+                shuffs = []
+                for j in range(5): #number of permutations
+                    sigma = [k for k in range(i)]
                     #self._shuffler.shuffle(sigma)
                     shuffler.shuffle(sigma)
                     shuffs.append(sigma)
                 self._shuffles.append(shuffs)
+        else:
+            self._shuffles = shuffles
         
         if self._makeGraph:
             self._digraph = SparseDigraph()
@@ -503,7 +511,7 @@ class StateManager:
         if self._drawPileSize < 5:
             #sigma = [i for i in range(self._discardPileSize)]
             #self._shuffler.shuffle(sigma)
-            sigma = self._shuffles[self._nShuffles][self._discardPileSize]
+            sigma = self._shuffles[self._discardPileSize][self._nShuffles]
             self._nShuffles += 1
         else:
             sigma = None
@@ -619,9 +627,11 @@ class StateManager:
         
 #################  #################
 
-MY_DECK = tuple([Card.STRIKE]*4+[Card.DEFEND]*4+[Card.ERUPTION,Card.VIGILANCE,Card.ASCENDERS_BANE]+[Card.NONE]*0)
+MY_DECK = tuple([Card.ASCENDERS_BANE]+[Card.STRIKE]*4+[Card.DEFEND]*4
++[Card.ERUPTION,Card.VIGILANCE]+[Card.NONE]*0)
 HANDS = memorizeHands(myDeck = MY_DECK)
 hsize = 0
+
 for hand in HANDS:
     hsize += len(HANDS[hand])
 print("len(HANDS) =", len(HANDS), "size =", hsize)
@@ -631,56 +641,23 @@ for hand in HANDS:
     hsize += len(HANDS[hand])
 print("len(HANDS) =", len(HANDS), "size =", hsize)
 
-def histogramFromResults(mults):
-    
-    # get maximum HP from in survival scenario
-    minSurviveHP, maxSurviveHP = 100, 0
-    for multTup in mults:
-        for mult in multTup:
-            if mult[0] > maxSurviveHP:
-                maxSurviveHP = mult[0]
-            elif mult[0] < minSurviveHP:
-                minSurviveHP = mult[0]
-    
-    # dictionaries 
-    histo = dict()
-    for endHP in range(minSurviveHP, maxSurviveHP+1):
-        reqHP = 62 - endHP
-        histo[(reqHP, 106)] = 0
-        histo[(reqHP, 109)] = 0
-        histo[(reqHP, 112)] = 0
-        
-        # one set of mults / fight
-        for multTup in mults:
-            survives = [mult for mult in multTup if mult[0] >= endHP]
-            if survives:
-                maxDamageToNob = max([106 - mult[1] for mult in survives])
-                histo[(reqHP, 106)] += 1
-                if maxDamageToNob >= 109:
-                    histo[(reqHP, 109)] += 1
-                if maxDamageToNob >= 112:
-                    histo[(reqHP, 112)] += 1
-    return histo, 62-maxSurviveHP, 62-minSurviveHP
-    
-def printHistogram(histo, xmin, xmax):
-    hStrings = dict()
-    runMin, prevRes = None, None
-    for sHP in range(xmin, xmax+1):
-        currRes = (histo[(sHP, 106)], histo[(sHP, 109)], histo[(sHP, 112)])
-        if prevRes is None:
-            prevRes = currRes
-            runMin = sHP
-        if currRes != prevRes:
-            if runMin == sHP:
-                outLine = str(runMin) + '\t'
-            else:
-                outLine = str(runMin) + '...' + str(sHP) + '\t'
-            s106, s109, s112 = currRes[0], currRes[1], currRes[2]
-            outLine += 'x'*(s106-s109)+ 'y'*(s109-s112) + 'z'*s112 
-            print(outLine)
-            runMin, prevRes = None, None
-            
-            
+def testShuffle(shuffles, pHP = 61, gnHP = 106, startDeck = MY_DECK):
+    sm = StateManager(pHP = pHP, gnHP = gnHP, verbose = False, startDeck = startDeck, 
+    makeGraph = True, shuffles = shuffles)
+    while sm.numStates:
+        sm.nextTurn()
+    if sm.winnable:
+        out = list(sm.winStats)
+        out.sort()
+        out = tuple(out)
+        print("sm.winStates =")
+        for winState in sm.winStates:
+            if sm.winStates[winState]:
+                print("\t", winState)
+        print("out =", out, "sm.winStats =", sm.winStats)
+        myPath = sm.getWinPath()
+        for elt in myPath:
+            print('\t', elt)	
 
 def sampleSim(nTrials = 100, pHP = 61, gnHP = 106, verbose = False, startDeck = MY_DECK):
     nWins = 0
@@ -711,28 +688,30 @@ def sampleSim(nTrials = 100, pHP = 61, gnHP = 106, verbose = False, startDeck = 
                 winStats[out] = 1
             
             #maxHP = max([mult[0] for mult in out])
+            myPath = sm.getWinPath()
+            if not (myPath is None):
+                for elt in myPath:
+                    print(elt)
             
         curr += 1
         
-        if curr % 100 == 0:
+        if curr % 10 == 0:
             print(nWins, "out of", curr, ":", nWins/curr, "; win stats =")
             for winStat in winStats:
                 print("\t", winStats[winStat], "times", winStat)
-            #histo, xmin, xmax = histogramFromResults(winStats)
-            #printHistogram(histo, xmin, xmax)
-        #print()
     
     print()
     return nWins
 
-NTRIALS = 1000
-conditions = [(NTRIALS, 61, 106)] #, (NTRIALS, 56, 106)]
+if True:
+    NTRIALS = 10000
+    conditions = [(NTRIALS, 61, 106)] #, (NTRIALS, 56, 106)]
 
-results = dict()
-print()
-for condition in conditions:
-    results[condition] = sampleSim(nTrials = condition[0], pHP = condition[1], gnHP = condition[2])
+    results = dict()
+    print()
+    for condition in conditions:
+        results[condition] = sampleSim(nTrials = condition[0], pHP = condition[1], gnHP = condition[2])
 
-for condition in conditions:
-    print("conditions =", condition, "\tresults:", 
-    results[condition], "/", condition[0], "=", results[condition]/condition[0])
+    for condition in conditions:
+        print("conditions =", condition, "\tresults:", 
+        results[condition], "/", condition[0], "=", results[condition]/condition[0])

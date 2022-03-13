@@ -1,2 +1,4 @@
 
 seeded-shuffles.py
+*.pyc
+seed.py
