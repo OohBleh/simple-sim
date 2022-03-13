@@ -54,6 +54,15 @@ class Card(Enum):
 
 CARDS = [Card.NONE, Card.STRIKE, Card.DEFEND, Card.ERUPTION, Card.VIGILANCE, Card.ASCENDERS_BANE]
 CARD_NAMES = ['none', 'S', 'D', 'E', 'V', 'A']
+COSTS = dict()
+UNPLAYABLES = set([Card.NONE, Card.ASCENDERS_BANE])
+for card in [Card.STRIKE, Card.DEFEND]:
+    COSTS[card] = 1
+for card in [Card.ERUPTION, Card.VIGILANCE]:
+    COSTS[card] = 2
+ATTACKS = set([Card.STRIKE, Card.ERUPTION])
+SKILLS = set([Card.DEFEND, Card.VIGILANCE])
+POWERS = set()
 START_DECK = tuple([Card.STRIKE]*4+[Card.DEFEND]*4+[Card.ERUPTION,Card.VIGILANCE,Card.ASCENDERS_BANE])
 
 class CardPositions:
@@ -175,8 +184,60 @@ WATCHER_STATES = tuple(WATCHER_STATES)
 #   e.g., order added to discard pile, damage dealt, ending stance, 
 #   block, and changes to gnBuff
 
-def playResult(cardSeq, watcherState):
-    E = 3
+
+## better organization for results from playing a sequence of cards ##
+## ... work in progress... ###
+class PlayResult:
+    def __init__(endWatcherState = WatcherState(), damage = 0, 
+    block = 0, buffGain = 0, discardOrder = tuple()):
+        self._endWatcherState = endWatcherState
+        self._damage = damage
+        self._block = block
+        self._buffGain = buffGain
+        self._discardOrder = discardOrder
+    
+    @property
+    def endWatcherState(self):
+        return self._endWatcherState
+    @property
+    def damage(self):
+        return self._damage
+    @property
+    def block(self):
+        return self._block
+    @property
+    def buffGain(self):
+        return self._buffGain
+    @property
+    def discardOrder(self):
+        return self._discardOrder
+    
+    # tests if self <= other
+    # none if incomparable
+    # true if self <= other
+    # false if self > other
+    def compare(self, other):
+        if isinstance(other, PlayResult) and other.discardOrder == self.discardOrder:
+            
+            # incomparable stances --> incomparable results
+            if WATCHER_STATE_COMPARE[(self.watcherState, other.watcherState)] is None:
+                return None
+            
+            # self.stance <= other.stance...
+            if WATCHER_STATE_COMPARE[(self.watcherState, other.watcherState)][0]:
+                if self.damage > other.damage or self.block > other.block or self.buffGain < other.buffGain:
+                    return None
+                return True
+            else:
+                # self.stance > other.stance
+                return False
+        else:
+            return None
+            
+    
+        
+
+def playResult(cardSeq, watcherState, E = 3):
     damage = 0
     block = 0
     buffGain = 0
@@ -184,45 +245,33 @@ def playResult(cardSeq, watcherState):
     hasMiracle = watcherState.hasMiracle
     
     for card in cardSeq:
-        if card is Card.ASCENDERS_BANE or card is Card.NONE:
+        if card in UNPLAYABLES:
             return 
+        
+        if E < COSTS[card]:
+            if hasMiracle:
+                E += 1
+                buffGain += 3
+                hasMiracle = False
+            else:
+                return
+        if E < COSTS[card]:
+            return 
+        E -= COSTS[card]
+        
+        if card in SKILLS:
+            buffGain += 3
+        
         if card is Card.STRIKE:
-            if E < 1:
-                if hasMiracle:
-                    E += 1
-                    buffGain += 3
-                    hasMiracle = False
-                else:
-                    return
-            E -= 1
             if stance == Stance.WRATH:
                 damage += 12
             else:
                 damage += 6
         
         elif card is Card.DEFEND:
-            if E < 1:
-                if hasMiracle:
-                    E += 1
-                    buffGain += 3
-                    hasMiracle = False
-                else:
-                    return
-            E -= 1
             block += 5
-            buffGain += 3
         
         elif card is Card.ERUPTION:
-            if E < 2:
-                if hasMiracle:
-                    buffGain += 3
-                    E += 1
-                    hasMiracle = False
-                else:
-                    return
-            if E < 2:
-                return
-            E -= 2
             if stance == Stance.WRATH:
                 damage += 18
             else:
@@ -232,19 +281,9 @@ def playResult(cardSeq, watcherState):
             stance = Stance.WRATH
         
         elif card is Card.VIGILANCE:
-            if E < 2:
-                if hasMiracle:
-                    E += 1
-                    buffGain += 3
-                    hasMiracle = False
-                else:
-                    return
-            if E < 2:
-                return
-            E -= 2
             block += 8
             stance = Stance.CALM
-            buffGain += 3
+    
     endWatcherState = WatcherState(stance = stance, hasMiracle = hasMiracle)
     return endWatcherState, damage, block, buffGain
 
@@ -627,7 +666,7 @@ class StateManager:
         
 #################  #################
 
-MY_DECK = tuple([Card.ASCENDERS_BANE]+[Card.STRIKE]*4+[Card.DEFEND]*4
+MY_DECK = tuple([Card.ASCENDERS_BANE]*1+[Card.STRIKE]*4+[Card.DEFEND]*4
 +[Card.ERUPTION,Card.VIGILANCE]+[Card.NONE]*0)
 HANDS = memorizeHands(myDeck = MY_DECK)
 hsize = 0
