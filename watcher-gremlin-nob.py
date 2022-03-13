@@ -12,7 +12,7 @@ from itertools import combinations
 #   Current queues, next sets:
 #       1 queue for each combination of:
 #           current CardPositions (draw/hand/discard), 
-#           WatcherState (stance, hasMiracle), 
+#           WatcherState (stance, nMiracles), 
 #           and gnBuff
 #           this is enough to compute how a sequence of card plays affects...
 #               CardPositions, WatcherState, and CombatState
@@ -32,7 +32,7 @@ from itertools import combinations
 #               apply each possible move
 #               try to add the result to the corresponding set
 #               within this set, CardPositions and stances are all the same
-#               compare CombatState and hasMiracle
+#               compare CombatState and nMiracles
 #           
 #       populate new queues from the sets that resulted, repeat    
 
@@ -41,7 +41,7 @@ from itertools import combinations
 #   CardPositions:
 #       (draw, hand, discard)
 #   WatcherState:
-#       (stance, hasMiracle)
+#       (stance, nMiracles)
 
 #################  #################
 class Card(Enum):
@@ -51,18 +51,25 @@ class Card(Enum):
     ERUPTION = 3
     VIGILANCE = 4
     ASCENDERS_BANE = 5
+    HALT = 6
+    EMPTY_BODY = 7
 
-CARDS = [Card.NONE, Card.STRIKE, Card.DEFEND, Card.ERUPTION, Card.VIGILANCE, Card.ASCENDERS_BANE]
-CARD_NAMES = ['none', 'S', 'D', 'E', 'V', 'A']
-COSTS = dict()
+CARDS = [Card.NONE, Card.STRIKE, Card.DEFEND, Card.ERUPTION, Card.VIGILANCE, Card.ASCENDERS_BANE, 
+Card.HALT, Card.EMPTY_BODY]
+CARD_NAMES = ['none', 'S', 'D', 'E', 'V', 'A', 'H', 'eb']
 UNPLAYABLES = set([Card.NONE, Card.ASCENDERS_BANE])
-for card in [Card.STRIKE, Card.DEFEND]:
+ETHEREAL = set([Card.ASCENDERS_BANE])
+
+COSTS = dict()
+for card in [Card.HALT]:
+    COSTS[card] = 0
+for card in [Card.STRIKE, Card.DEFEND, Card.EMPTY_BODY]:
     COSTS[card] = 1
 for card in [Card.ERUPTION, Card.VIGILANCE]:
     COSTS[card] = 2
 ATTACKS = set([Card.STRIKE, Card.ERUPTION])
-SKILLS = set([Card.DEFEND, Card.VIGILANCE])
-POWERS = set()
+SKILLS = set([Card.DEFEND, Card.VIGILANCE, Card.HALT, Card.EMPTY_BODY])
+POWERS = set([])
 START_DECK = tuple([Card.STRIKE]*4+[Card.DEFEND]*4+[Card.ERUPTION,Card.VIGILANCE,Card.ASCENDERS_BANE])
 
 class CardPositions:
@@ -144,26 +151,27 @@ STANCES = [Stance.NONE, Stance.NEUTRAL, Stance.WRATH, Stance.CALM]
 STANCE_NAMES = ['none', 'neutral', 'wrath', 'calm']
 
 class WatcherState:
-    def __init__(self, stance = Stance.NEUTRAL, hasMiracle = True):
+    def __init__(self, stance = Stance.NEUTRAL, nMiracles = 1):
         self._stance = stance
-        self._hasMiracle = hasMiracle
+        self._nMiracles = nMiracles
     
     @property
     def stance(self):
         return self._stance
     @property
-    def hasMiracle(self):
-        return self._hasMiracle
+    def nMiracles(self):
+        return self._nMiracles
     
     def __eq__(self, other):
-        return isinstance(other, WatcherState) and self.stance is other.stance and self.hasMiracle is other.hasMiracle
+        return isinstance(other, WatcherState) and self.stance is other.stance and self.nMiracles == other.nMiracles
     def __hash__(self):
-        return hash((self.stance, self.hasMiracle))
+        return hash((self.stance, self.nMiracles))
     def __str__(self):
-        if self.hasMiracle:
-            return STANCE_NAMES[self.stance.value] + ', 1 miracle'
-        else:
-            return STANCE_NAMES[self.stance.value] + ', 0 miracle' 
+        return STANCE_NAMES[self.stance.value] + ',' + self.nMiracles + 'miracle(s)'
+        #if self.nMiracles:
+        #    return STANCE_NAMES[self.stance.value] + ', 1 miracle'
+        #else:
+        #    return STANCE_NAMES[self.stance.value] + ', 0 miracle' 
 
 
 #ws1 = WatcherState()
@@ -173,8 +181,8 @@ class WatcherState:
 
 WATCHER_STATES = []
 for stance in STANCES[1:]:
-    WATCHER_STATES.append(WatcherState(stance = stance, hasMiracle = True))
-    WATCHER_STATES.append(WatcherState(stance = stance, hasMiracle = False))
+    WATCHER_STATES.append(WatcherState(stance = stance, nMiracles = 1))
+    WATCHER_STATES.append(WatcherState(stance = stance, nMiracles = 0))
 WATCHER_STATES = tuple(WATCHER_STATES)
 
 ################# START OF PRE-COMPUTED DATA #################
@@ -242,36 +250,35 @@ def playResult(cardSeq, watcherState, E = 3):
     block = 0
     buffGain = 0
     stance = watcherState.stance
-    hasMiracle = watcherState.hasMiracle
+    nMiracles = watcherState.nMiracles
     
     for card in cardSeq:
         if card in UNPLAYABLES:
             return 
         
-        if E < COSTS[card]:
-            if hasMiracle:
+        while E < COSTS[card]:
+            if nMiracles:
                 E += 1
                 buffGain += 3
-                hasMiracle = False
+                nMiracles -= 1
             else:
                 return
-        if E < COSTS[card]:
-            return 
+        
         E -= COSTS[card]
         
         if card in SKILLS:
             buffGain += 3
         
-        if card is Card.STRIKE:
+        if card == Card.STRIKE:
             if stance == Stance.WRATH:
                 damage += 12
             else:
                 damage += 6
         
-        elif card is Card.DEFEND:
+        elif card == Card.DEFEND:
             block += 5
         
-        elif card is Card.ERUPTION:
+        elif card == Card.ERUPTION:
             if stance == Stance.WRATH:
                 damage += 18
             else:
@@ -280,11 +287,23 @@ def playResult(cardSeq, watcherState, E = 3):
                 damage += 9    
             stance = Stance.WRATH
         
-        elif card is Card.VIGILANCE:
+        elif card == Card.VIGILANCE:
             block += 8
             stance = Stance.CALM
-    
-    endWatcherState = WatcherState(stance = stance, hasMiracle = hasMiracle)
+        
+        elif card == Card.HALT:
+            if stance == Stance.WRATH:
+                block += 12
+            else:
+                block += 3
+        
+        elif card == Card.EMPTY_BODY:
+            block += 7
+            if stance == Stance.CALM:
+                E += 2
+            stance = Stance.NEUTRAL
+        
+    endWatcherState = WatcherState(stance = stance, nMiracles = nMiracles)
     return endWatcherState, damage, block, buffGain
 
 def handResults(hand, wstate):
@@ -296,7 +315,7 @@ def handResults(hand, wstate):
             if out != None:
                 # out = endWatcherState, damage, block, buffGain
                 discardOrder = [hand[i] for i in range(5) if not i in sigma
-                and not hand[i] is Card.ASCENDERS_BANE]
+                and not hand[i] in ETHEREAL]
                 discardOrder.reverse()
                 discardOrder = tuple(play + discardOrder)
                 results.add(tuple([discardOrder]) + out)
@@ -331,8 +350,8 @@ def setWatcherStateCompare():
                 WATCHER_STATE_COMPARE[(ws1, ws2)] = None
             else:
                 lesser, greater = out
-                lesser = lesser and ((not ws1.hasMiracle) or ws2.hasMiracle)
-                greater = greater and ((not ws2.hasMiracle) or ws1.hasMiracle)
+                lesser = lesser and ( ws1.nMiracles <= ws2.nMiracles)
+                greater = greater and (not ws2.nMiracles <= ws1.nMiracles)
                 if lesser or greater:
                     WATCHER_STATE_COMPARE[(ws1, ws2)] = (lesser, greater)
                 else:
@@ -639,11 +658,11 @@ class StateManager:
                                 if comp is False:
                                     pops.append(otherState)
                         if pops:
-                            #print("nextState =", nextState[0].stance, nextState[0].hasMiracle, 
+                            #print("nextState =", nextState[0].stance, nextState[0].nMiracles, 
                             #nextState[1].pHP, nextState[1].gnHP, nextState[1].gnBuff, "beats...")
                             for otherState in pops:
                                 nextDict[nextPos].remove(otherState)
-                                #print("  otherState =", otherState[0].stance, otherState[0].hasMiracle, 
+                                #print("  otherState =", otherState[0].stance, otherState[0].nMiracles, 
                                 #otherState[1].pHP, otherState[1].gnHP, otherState[1].gnBuff)
                             
                             nextDict[nextPos].add(nextState)
@@ -667,7 +686,11 @@ class StateManager:
 #################  #################
 
 MY_DECK = tuple([Card.ASCENDERS_BANE]*1+[Card.STRIKE]*4+[Card.DEFEND]*4
-+[Card.ERUPTION,Card.VIGILANCE]+[Card.NONE]*0)
++[Card.ERUPTION,Card.VIGILANCE]
++[Card.NONE]*1
++[Card.HALT]*0
++[Card.EMPTY_BODY]*0
+)
 HANDS = memorizeHands(myDeck = MY_DECK)
 hsize = 0
 
