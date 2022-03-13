@@ -7,41 +7,23 @@ from itertools import permutations
 from itertools import combinations
 
 #   Global manager:
-#       turn, deck shuffle permutation
-#       list of all queues
-#   Current queues, next sets:
-#       1 queue for each combination of:
-#           current CardPositions (draw/hand/discard), 
-#           WatcherState (stance, nMiracles), 
-#           and gnBuff
-#           this is enough to compute how a sequence of card plays affects...
-#               CardPositions, WatcherState, and CombatState
-#       queue entries are current CombatStates (pHP, gnHP, gnBuff)
-#       
-#       1 set for each combination of:
-#           next turn CardPositions, stance
+#       turn, deck shuffle permutation, 
+#       current set of "states"
+#   Current sets:
+#       organized in dictionary by:
+#           stance & current CardPositions (draw/hand/discard)
+#           sets elements are pairs of: 
+#               WatcherState (stance, nMiracles, nProtects, etc)
+#               & CombatState (pHP, gnHP, gnBuff)
+#           together, this determines all possible combinations of 
+#               CardPositions, WatcherState, and CombatState @ end of turn
 #
-#       process a queue at a time:
-#           list possible moves
-#           for each possible move, hash the following:
-#               CardPositions for next turn, 
-#               WatcherState for next turn, and 
-#               change to CombatState
-
-#           for each queue entry:
-#               apply each possible move
-#               try to add the result to the corresponding set
-#               within this set, CardPositions and stances are all the same
-#               compare CombatState and nMiracles
-#           
-#       populate new queues from the sets that resulted, repeat    
-
 #   CombatState:
 #       (pHP, gnHP, gnBuff)
 #   CardPositions:
 #       (draw, hand, discard)
 #   WatcherState:
-#       (stance, nMiracles)
+#       (stance, nMiracles, nProtects, etc)
 
 #################  #################
 class Card(Enum):
@@ -53,23 +35,29 @@ class Card(Enum):
     ASCENDERS_BANE = 5
     HALT = 6
     EMPTY_BODY = 7
+    PROTECT = 8
 
 CARDS = [Card.NONE, Card.STRIKE, Card.DEFEND, Card.ERUPTION, Card.VIGILANCE, Card.ASCENDERS_BANE, 
-Card.HALT, Card.EMPTY_BODY]
-CARD_NAMES = ['none', 'S', 'D', 'E', 'V', 'A', 'H', 'eb']
+Card.HALT, Card.EMPTY_BODY, Card.PROTECT]
+CARD_NAMES = ['none', 'S', 'D', 'E', 'V', 'A', 
+'H', 'Eb', 'Pr']
 UNPLAYABLES = set([Card.NONE, Card.ASCENDERS_BANE])
-ETHEREAL = set([Card.ASCENDERS_BANE])
+ETHEREALS = set([Card.ASCENDERS_BANE])
+RETAINS = dict()
+RETAINS[Card.PROTECT] = Card.PROTECT
 
 COSTS = dict()
 for card in [Card.HALT]:
     COSTS[card] = 0
 for card in [Card.STRIKE, Card.DEFEND, Card.EMPTY_BODY]:
     COSTS[card] = 1
-for card in [Card.ERUPTION, Card.VIGILANCE]:
+for card in [Card.ERUPTION, Card.VIGILANCE, Card.PROTECT]:
     COSTS[card] = 2
 ATTACKS = set([Card.STRIKE, Card.ERUPTION])
-SKILLS = set([Card.DEFEND, Card.VIGILANCE, Card.HALT, Card.EMPTY_BODY])
+SKILLS = set([Card.DEFEND, Card.VIGILANCE, 
+Card.HALT, Card.EMPTY_BODY, Card.PROTECT])
 POWERS = set([])
+
 START_DECK = tuple([Card.STRIKE]*4+[Card.DEFEND]*4+[Card.ERUPTION,Card.VIGILANCE,Card.ASCENDERS_BANE])
 
 class CardPositions:
@@ -89,7 +77,14 @@ class CardPositions:
         return self._discard
     
     def __eq__(self, other):
-        return isinstance(other, CardPositions) and self._draw == other._draw and self._hand == other._hand and self._discard == other._discard
+        if self.draw != other.draw:
+            return False
+        if self.hand != other.hand:
+            return False
+        if self.discard != other.discard:
+            return False
+        return True
+    
     def __hash__(self):
         return hash((self.draw, self.hand, self.discard))
     
@@ -151,9 +146,10 @@ STANCES = [Stance.NONE, Stance.NEUTRAL, Stance.WRATH, Stance.CALM]
 STANCE_NAMES = ['none', 'neutral', 'wrath', 'calm']
 
 class WatcherState:
-    def __init__(self, stance = Stance.NEUTRAL, nMiracles = 1):
+    def __init__(self, stance = Stance.NEUTRAL, nMiracles = 1, nProtects = 0):
         self._stance = stance
         self._nMiracles = nMiracles
+        self._nProtects = nProtects
     
     @property
     def stance(self):
@@ -161,18 +157,84 @@ class WatcherState:
     @property
     def nMiracles(self):
         return self._nMiracles
+    @property
+    def nProtects(self):
+        return self._nProtects
     
+    def retainCards(self):
+        return [Card.PROTECT]*self.nProtects
+    
+    # for comparisons...
+    # None means incomparable
+    # True/False means true/false
+    
+    # <=
+    def __le__(self, other):
+        if self.stance == other.stance:
+            if self.nMiracles > other.nMiracles:
+                return False
+            if self.nProtects > other.nProtects:
+                return False
+            return True
+    # >=
+    def __ge__(self, other):
+        if self.stance == other.stance:
+            if self.nMiracles < other.nMiracles:
+                return False
+            if self.nProtects < other.nProtects:
+                return False
+            return True
+    
+    # <
+    def __lt__(self, other):
+        if self <= other:
+            if self.nMiracles < other.nMiracles:
+                return True
+            if self.nProtects < other.nProtects:
+                return True
+            return False
+    
+    # >
+    def __gt__(self, other):
+        if self >= other:
+            if self.nMiracles > other.nMiracles:
+                return True
+            if self.nProtects > other.nProtects:
+                return True
+            return False
+    
+    # =
     def __eq__(self, other):
-        return isinstance(other, WatcherState) and self.stance is other.stance and self.nMiracles == other.nMiracles
+        if self.stance != other.stance:
+            return False
+        else:
+            if self.nMiracles != other.nMiracles:
+                return False
+            if self.nProtects != other.nProtects:
+                return False
+            return True
+    
+    # !=
+    def __ne__(self, other):
+        if self.stance != other.stance:
+            return True
+        else:
+            if self.nMiracles != other.nMiracles:
+                return True
+            if self.nProtects != other.nProtects:
+                return True
+            return False
+    
+    
     def __hash__(self):
-        return hash((self.stance, self.nMiracles))
+        return hash((self.stance, self.nMiracles, self.nProtects))
     def __str__(self):
-        return STANCE_NAMES[self.stance.value] + ',' + self.nMiracles + 'miracle(s)'
-        #if self.nMiracles:
-        #    return STANCE_NAMES[self.stance.value] + ', 1 miracle'
-        #else:
-        #    return STANCE_NAMES[self.stance.value] + ', 0 miracle' 
-
+        out = STANCE_NAMES[self.stance.value]
+        if self.nMiracles:
+            out += ',' + self.nMiracles + 'miracle(s)'
+        if self.nProtects:
+            out += ',' + self.nProtects + 'protects(s)'
+        return out
 
 #ws1 = WatcherState()
 #ws2 = WatcherState()
@@ -315,7 +377,7 @@ def handResults(hand, wstate):
             if out != None:
                 # out = endWatcherState, damage, block, buffGain
                 discardOrder = [hand[i] for i in range(5) if not i in sigma
-                and not hand[i] in ETHEREAL]
+                and not hand[i] in ETHEREALS]
                 discardOrder.reverse()
                 discardOrder = tuple(play + discardOrder)
                 results.add(tuple([discardOrder]) + out)
