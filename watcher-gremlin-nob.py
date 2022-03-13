@@ -36,26 +36,41 @@ class Card(Enum):
     HALT = 6
     EMPTY_BODY = 7
     PROTECT = 8
+    DECEIVE_REALITY = 9
+    SAFETY = 10
 
-CARDS = [Card.NONE, Card.STRIKE, Card.DEFEND, Card.ERUPTION, Card.VIGILANCE, Card.ASCENDERS_BANE, 
-Card.HALT, Card.EMPTY_BODY, Card.PROTECT]
+ALL_CARDS = [Card.NONE, Card.STRIKE, Card.DEFEND, Card.ERUPTION, Card.VIGILANCE, Card.ASCENDERS_BANE, 
+Card.HALT, Card.EMPTY_BODY, Card.PROTECT, Card.DECEIVE_REALITY, Card.SAFETY]
 CARD_NAMES = ['none', 'S', 'D', 'E', 'V', 'A', 
-'H', 'Eb', 'Pr']
+'H', 'Eb', 'Pr', 'Dr', 'Sf']
+
 UNPLAYABLES = set([Card.NONE, Card.ASCENDERS_BANE])
 ETHEREALS = set([Card.ASCENDERS_BANE])
-RETAINS = dict()
-RETAINS[Card.PROTECT] = Card.PROTECT
+EXHAUSTS = set([Card.SAFETY])
+RETAINS = set([Card.PROTECT, Card.SAFETY])
 
 COSTS = dict()
 for card in [Card.HALT]:
     COSTS[card] = 0
-for card in [Card.STRIKE, Card.DEFEND, Card.EMPTY_BODY]:
+for card in [Card.STRIKE, Card.DEFEND, 
+Card.EMPTY_BODY, Card.DECEIVE_REALITY, Card.SAFETY]:
     COSTS[card] = 1
 for card in [Card.ERUPTION, Card.VIGILANCE, Card.PROTECT]:
     COSTS[card] = 2
 ATTACKS = set([Card.STRIKE, Card.ERUPTION])
+
 SKILLS = set([Card.DEFEND, Card.VIGILANCE, 
-Card.HALT, Card.EMPTY_BODY, Card.PROTECT])
+Card.HALT, Card.EMPTY_BODY, Card.PROTECT, Card.DECEIVE_REALITY, Card.SAFETY])
+
+BLOCKS = dict()
+BLOCKS[Card.DEFEND] = 5
+BLOCKS[Card.VIGILANCE] = 8
+BLOCKS[Card.HALT] = 3
+BLOCKS[Card.EMPTY_BODY] = 7
+BLOCKS[Card.PROTECT] = 12
+BLOCKS[Card.DECEIVE_REALITY] = 4
+BLOCKS[Card.SAFETY] = 12
+
 POWERS = set([])
 
 START_DECK = tuple([Card.STRIKE]*4+[Card.DEFEND]*4+[Card.ERUPTION,Card.VIGILANCE,Card.ASCENDERS_BANE])
@@ -129,6 +144,12 @@ class CombatState:
     def gnBuff(self):
         return self._gnBuff
     
+    # +
+    def __add__(self, other):
+        return CombatState(pHP = self.pHP + other.pHP, 
+        gnHP = self.gnHP + other.gnHP, 
+        gnBuff = self.gnBuff + other.gnBuff)
+    
     # <=
     def __le__(self, other):
         if self.pHP > other.pHP:
@@ -155,6 +176,13 @@ class CombatState:
     def __ne__(self, other):
         return not (self == other)
     
+    # <
+    def __lt__(self, other):
+        return self <= other and self != other
+    # >
+    def __gt__(self, other):
+        return other < self
+    
     
     def __hash__(self):
         return hash((self.pHP, self.gnHP, self.gnBuff))
@@ -173,10 +201,11 @@ STANCE_NAMES = ['none', 'neutral', 'wrath', 'calm', 'divinity']
 
 class WatcherState:
     def __init__(self, stance = Stance.NEUTRAL, nMiracles = 1, 
-    nProtects = 0):
+    nProtects = 0, nSafeties = 0):
         self._stance = stance
         self._nMiracles = nMiracles
         self._nProtects = nProtects
+        self._nSafeties = nSafeties
     
     @property
     def stance(self):
@@ -265,54 +294,176 @@ WATCHER_STATES = tuple(WATCHER_STATES)
 ## better organization for results from playing a sequence of cards ##
 ## ... work in progress... ###
 class PlayResult:
-    def __init__(endWatcherState = WatcherState(), damage = 0, 
-    block = 0, buffGain = 0, discardOrder = tuple()):
-        self._endWatcherState = endWatcherState
-        self._damage = damage
+    # pass in startWatcherState, hand, permutation, etc
+    # return object with:
+    #   order that cards get added to discard, 
+    #   endWatcherState, 
+    #   net change to CombatState (block, damage, buffGain)
+    #   also store the permutation, but don't use it in comparisons
+    # assumes that hand is padded with nProtects copies of Protect
+    # same for all retaining cards
+    # additionally, hand is padded with one Safety for each Deceive Reailty drawn
+    
+    def __init__(startWatcher, hand, playSeq):
+        stance = startWatcher.stance
+        nMiracles = startWatcher.nMiracles
+        nProtects = startWatcher.nProtects
+        nSafeties = startWatcher.nSafeties
+        
+        block = 0
+        E = 3
+        self._valid = None
+        
+        for i in playSeq:
+            card = hand[i]
+            if card in UNPLAYABLES:
+                self._valid = False
+                return 
+            
+            while E < COSTS[card]:
+                if nMiracles:
+                    E += 1
+                    buffGain += 3
+                    nMiracles -= 1
+                else:
+                    self._valid = False
+                    return
+            
+            E -= COSTS[card]
+            
+            if card in SKILLS:
+                buffGain += 3
+            if card in BLOCKS:
+                block += BLOCKS[card]
+            
+            if card == Card.STRIKE:
+                if stance == Stance.WRATH:
+                    damage += 12
+                else:
+                    damage += 6
+            
+            #elif card == Card.DEFEND:
+            #    block += 5
+            
+            elif card == Card.ERUPTION:
+                if stance == Stance.WRATH:
+                    damage += 18
+                else:
+                    if stance == Stance.CALM:
+                        E += 2
+                    damage += 9    
+                stance = Stance.WRATH
+            
+            elif card == Card.VIGILANCE:
+                #block += 8
+                stance = Stance.CALM
+            
+            elif card == Card.HALT:
+                if stance == Stance.WRATH:
+                    block += 9
+            
+            elif card == Card.EMPTY_BODY:
+                #block += 7
+                if stance == Stance.CALM:
+                    E += 2
+                stance = Stance.NEUTRAL
+            elif card == Card.DECEIVE_REALITY:
+                nSafeties += 1
+            elif card == Card.SAFETY:
+                nSafeties -= 1
+        
+        self._valid = True
+        self._endWatcher = WatcherState(stance = stance, nMiracles = nMiracles, 
+        nProtects = nProtects, nSafeties = nSafeties)
         self._block = block
+        self._damage = damage
         self._buffGain = buffGain
-        self._discardOrder = discardOrder
+        
+        playDiscard = [hand[i] for i in playSeq if not (hand[i] in POWERS or hand[i] in EXHAUSTS)]
+        discardOrder = [hand[i] for i in range(len(hand)) if not i in playSeq and not hand[i] in ETHEREALS]
+        discardOrder.reverse()
+        self._discardOrder = tuple(playDiscard + discardOrder)
+        self._playOrder = playSeq
     
     @property
-    def endWatcherState(self):
-        return self._endWatcherState
-    @property
-    def damage(self):
-        return self._damage
+    def endWatcher(self):
+        return self._endWatcher
     @property
     def block(self):
         return self._block
+    @property
+    def damage(self):
+        return self._damage
     @property
     def buffGain(self):
         return self._buffGain
     @property
     def discardOrder(self):
         return self._discardOrder
+    @property
+    def playOrder(self):
+        return self._playOrder
+    @property
+    def valid(self):
+        return self._valid
     
-    # tests if self <= other
-    # none if incomparable
-    # true if self <= other
-    # false if self > other
-    def compare(self, other):
-        if isinstance(other, PlayResult) and other.discardOrder == self.discardOrder:
-            
-            # incomparable stances --> incomparable results
-            if WATCHER_STATE_COMPARE[(self.watcherState, other.watcherState)] is None:
-                return None
-            
-            # self.stance <= other.stance...
-            if WATCHER_STATE_COMPARE[(self.watcherState, other.watcherState)][0]:
-                if self.damage > other.damage or self.block > other.block or self.buffGain < other.buffGain:
-                    return None
+    def __hash__(self):
+        return hash((self.endWatcher, self.discardOrder,
+        self.block, self.damage, self.buffGain))
+    
+    def __str__(self):
+        out = str(self.endWatcher)
+        out += ', ' + str(self.discardOrder)
+        out += ', block = ' + self.block
+        out += ', damage = ' + self.damage
+        out += ', buffGain = ' + self.buffGain
+    
+    
+    # for comparisons, 
+    # True if comparison is valid
+    # False if comparison is false (incl. incomparability)
+    
+    # <= 
+    def __le__(self, other):
+        if self.discardOrder == other.discardOrder:
+            if self.endWatcher <= other.endWatcher:
+                if self.block > other.block:
+                    return False
+                if self.damage > other.damage:
+                    return False
+                if self.buffGain < other.buffGain:
+                    return False
                 return True
-            else:
-                # self.stance > other.stance
-                return False
-        else:
-            return None
-            
+            return False
+        return False
+    # >=
+    def __ge__(self, other):
+        return other <= self
     
-        
+    # == 
+    def __eq__(self, other):
+        if self.discardOrder == other.discardOrder:
+            if self.endWatcher == other.endWatcher:
+                if self.block != other.block:
+                    return False
+                if self.damage != other.damage:
+                    return False
+                if self.buffGain != other.buffGain:
+                    return False
+                return True
+            return False
+        return False
+    # !=
+    def __ne__(self, other):
+        return not (self == other)
+    
+    # <
+    def __lt__(self, other):
+        return (self <= other) and (self != other)
+    # >
+    def __gt__(self, other):
+        return (self >= other) and (self != other)
+    
 
 def playResult(cardSeq, watcherState, E = 3):
     damage = 0
@@ -338,14 +489,17 @@ def playResult(cardSeq, watcherState, E = 3):
         if card in SKILLS:
             buffGain += 3
         
+        if card in BLOCKS:
+            block += BLOCKS[card]
+        
         if card == Card.STRIKE:
             if stance == Stance.WRATH:
                 damage += 12
             else:
                 damage += 6
         
-        elif card == Card.DEFEND:
-            block += 5
+        #elif card == Card.DEFEND:
+        #    block += 5
         
         elif card == Card.ERUPTION:
             if stance == Stance.WRATH:
@@ -357,7 +511,7 @@ def playResult(cardSeq, watcherState, E = 3):
             stance = Stance.WRATH
         
         elif card == Card.VIGILANCE:
-            block += 8
+            #block += 8
             stance = Stance.CALM
         
         elif card == Card.HALT:
@@ -367,7 +521,7 @@ def playResult(cardSeq, watcherState, E = 3):
                 block += 3
         
         elif card == Card.EMPTY_BODY:
-            block += 7
+            #block += 7
             if stance == Stance.CALM:
                 E += 2
             stance = Stance.NEUTRAL
@@ -756,7 +910,7 @@ class StateManager:
 
 MY_DECK = tuple([Card.ASCENDERS_BANE]*1+[Card.STRIKE]*4+[Card.DEFEND]*4
 +[Card.ERUPTION,Card.VIGILANCE]
-+[Card.NONE]*1
++[Card.NONE]*0
 +[Card.HALT]*0
 +[Card.EMPTY_BODY]*0
 )
@@ -835,7 +989,7 @@ def sampleSim(nTrials = 100, pHP = 61, gnHP = 106, verbose = False, startDeck = 
     return nWins
 
 if True:
-    NTRIALS = 10000
+    NTRIALS = 1000
     conditions = [(NTRIALS, 61, 106)] #, (NTRIALS, 56, 106)]
 
     results = dict()
