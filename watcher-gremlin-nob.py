@@ -580,12 +580,13 @@ def memorizeHands(myDeck = START_DECK):
 
 class FullState:
     def __init__(self, cardPositions = CardPositions(), watcherState = WatcherState(), 
-    combatState = CombatState(), turn = 0, nShuffles = 0):
+    combatState = CombatState(), turn = 0, nShuffles = 0, cardSeq = None):
         self._cardPositions = cardPositions
         self._watcherState = watcherState
         self._combatState = combatState
         self._turn = turn
         self._nShuffles = nShuffles
+        self._cardSeq = cardSeq
         
     @property
     def cardPositions(self):
@@ -602,6 +603,9 @@ class FullState:
     @property
     def nShuffles(self):
         return self._nShuffles
+    @property
+    def cardSeq(self):
+        return self._cardSeq
     
     def __eq__(self, other):
         if isinstance(other, FullState) and self.turn == other.turn and self.cardPositions == other.cardPositions:
@@ -612,7 +616,11 @@ class FullState:
         return hash((self.cardPositions, self.watcherState, self.combatState, self.turn))
     
     def __str__(self):
-        return f'turn = {self.turn}, combatState = {self.combatState}, cardPositions = {self.cardPositions}, watcherState = {self.watcherState}'
+        out = f'turn = {self.turn}, combatState = {self.combatState}, cardPositions = {self.cardPositions}, watcherState = {self.watcherState}'
+        if self.cardSeq is None:
+            return out
+        else:
+            return out + '\n\t' + str(self.cardSeq)
 
 # None: states incomparable
 # True: state1 <= state2
@@ -788,15 +796,17 @@ class StateManager:
                     print("  ws =", ws, "; cs =", cs, "...")
                 
                 if self._makeGraph:
-                    prevFS = FullState(cardPositions = pos, watcherState = ws, combatState = cs, turn = self.turn-1, nShuffles = nShuffles)
-                    currFS = FullState(cardPositions = currPos, watcherState = ws, combatState = cs, turn = self.turn, nShuffles = nextNShuffles)
+                    prevFS = FullState(cardPositions = pos, watcherState = ws, combatState = cs, turn = self.turn-1, 
+                    nShuffles = nShuffles, cardSeq = 'before shuffle')
+                    currFS = FullState(cardPositions = currPos, watcherState = ws, combatState = cs, turn = self.turn, 
+                    nShuffles = nextNShuffles, cardSeq = 'after shuffle')
                     self._digraph.addArc(prevFS, currFS)
                 
                 if (currPos.hand, ws) in HANDS:
                     hr = HANDS[(currPos.hand, ws)]
                 else:
                     hr = handResults(currPos.hand, ws)
-                    print("new hand =", currPos.hand, ws)
+                    #print("new hand =", currPos.hand, ws)
                     HANDS[(currPos.hand, ws)] = hr
                 
                 for out in hr:
@@ -844,14 +854,15 @@ class StateManager:
                         print("    results in:", nextPos, nextWS, nextCS)
                     
                     nextFS = FullState(cardPositions = nextPos, watcherState = nextWS, combatState = nextCS, 
-                    turn = self.turn, nShuffles = nextNShuffles)
+                    turn = self.turn, nShuffles = nextNShuffles, cardSeq = out.playOrder)
                     if self._makeGraph:
                         self._digraph.addArc(currFS, nextFS)
                     
                     if nextCS.gnHP <= 0:
                         
                         wonCS = CombatState(pHP = cs.pHP, gnHP = nextCS.gnHP, gnBuff = nextCS.gnBuff)
-                        wonFS = FullState(cardPositions = nextPos, watcherState = nextWS, combatState = wonCS, turn = self.turn, nShuffles = nextNShuffles)
+                        wonFS = FullState(cardPositions = nextPos, watcherState = nextWS, combatState = wonCS, turn = self.turn, 
+                        nShuffles = nextNShuffles, cardSeq = out.playOrder)
                         
                         self.updateWins(wonFS)
                         
@@ -903,8 +914,8 @@ MY_DECK = tuple([Card.ASCENDERS_BANE]*1+[Card.STRIKE]*4+[Card.DEFEND]*4
 +[Card.ERUPTION,Card.VIGILANCE]
 +[Card.NONE]*0
 +[Card.HALT]*0
-+[Card.EMPTY_BODY]*0
-+[Card.DECEIVE_REALITY]*1
++[Card.EMPTY_BODY]*1
++[Card.DECEIVE_REALITY]*0
 )
 #HANDS = memorizeHands(myDeck = START_DECK)
 HANDS = memorizeHands(myDeck = MY_DECK)
@@ -985,7 +996,7 @@ def sampleSim(nTrials = 100, pHP = 61, gnHP = 106, verbose = False, startDeck = 
     print()
     return nWins
 
-if True:
+if False:
     NTRIALS = 1000
     conditions = [(NTRIALS, 61, 106)] #, (NTRIALS, 56, 106)]
 
