@@ -699,7 +699,6 @@ class StateManager:
         
         self._verbose = verbose
         self._winnable = None
-        self._nShuffles = 0
         
         startPositions = CardPositions(discard = startDeck)
         startWatcher = WatcherState()
@@ -868,11 +867,11 @@ class StateManager:
                         
                     if nextCS.pHP > 0:
                         nextState = (nextWS, nextCS)
-                        if not (nextPos, nShuffles) in nextDict:
-                            nextDict[(nextPos, nShuffles)] = set()
+                        if not (nextPos, nextNShuffles) in nextDict:
+                            nextDict[(nextPos, nextNShuffles)] = set()
                         pops = []
                         less = False
-                        for otherState in nextDict[(nextPos, nShuffles)]:
+                        for otherState in nextDict[(nextPos, nextNShuffles)]:
                             #comp = compareStates(nextState, otherState)
                             # otherState = (ws2, cs2)
                             if nextWS <= otherState[0] and nextCS <= otherState[1]:
@@ -885,14 +884,14 @@ class StateManager:
                             #print("nextState =", nextState[0].stance, nextState[0].nMiracles, 
                             #nextState[1].pHP, nextState[1].gnHP, nextState[1].gnBuff, "beats...")
                             for otherState in pops:
-                                nextDict[(nextPos, nShuffles)].remove(otherState)
+                                nextDict[(nextPos, nextNShuffles)].remove(otherState)
                                 #print("  otherState =", otherState[0].stance, otherState[0].nMiracles, 
                                 #otherState[1].pHP, otherState[1].gnHP, otherState[1].gnBuff)
                             
-                            nextDict[(nextPos, nShuffles)].add(nextState)
+                            nextDict[(nextPos, nextNShuffles)].add(nextState)
                         else:
                             if not less:
-                                nextDict[(nextPos, nShuffles)].add(nextState)
+                                nextDict[(nextPos, nextNShuffles)].add(nextState)
         
         self._stateDictionary = nextDict
         if len(self._stateDictionary) == 0:
@@ -911,7 +910,8 @@ MY_DECK = tuple([Card.ASCENDERS_BANE]*1+[Card.STRIKE]*4+[Card.DEFEND]*4
 +[Card.ERUPTION,Card.VIGILANCE]
 +[Card.NONE]*0
 +[Card.HALT]*0
-+[Card.EMPTY_BODY]*1
++[Card.PROTECT]*0
++[Card.EMPTY_BODY]*0
 +[Card.DECEIVE_REALITY]*0
 )
 #HANDS = memorizeHands(myDeck = START_DECK)
@@ -995,7 +995,7 @@ def sampleSim(nTrials = 100, pHP = 61, gnHP = 106, verbose = False, startDeck = 
     print()
     return nWins
 
-if False:
+if True:
     NTRIALS = 1000
     conditions = [(NTRIALS, 61, 106)] #, (NTRIALS, 56, 106)]
 
