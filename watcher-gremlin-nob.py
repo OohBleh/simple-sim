@@ -580,13 +580,12 @@ def memorizeHands(myDeck = START_DECK):
 
 class FullState:
     def __init__(self, cardPositions = CardPositions(), watcherState = WatcherState(), 
-    combatState = CombatState(), turn = 0, nShuffles = 0, cardSeq = None):
+    combatState = CombatState(), turn = 0, nShuffles = 0):
         self._cardPositions = cardPositions
         self._watcherState = watcherState
         self._combatState = combatState
         self._turn = turn
         self._nShuffles = nShuffles
-        self._cardSeq = cardSeq
         
     @property
     def cardPositions(self):
@@ -603,9 +602,6 @@ class FullState:
     @property
     def nShuffles(self):
         return self._nShuffles
-    @property
-    def cardSeq(self):
-        return self._cardSeq
     
     def __eq__(self, other):
         if isinstance(other, FullState) and self.turn == other.turn and self.cardPositions == other.cardPositions:
@@ -616,11 +612,7 @@ class FullState:
         return hash((self.cardPositions, self.watcherState, self.combatState, self.turn))
     
     def __str__(self):
-        out = f'turn = {self.turn}, combatState = {self.combatState}, cardPositions = {self.cardPositions}, watcherState = {self.watcherState}'
-        if self.cardSeq is None:
-            return out
-        else:
-            return out + '\n\t' + str(self.cardSeq)
+        return f'turn = {self.turn}, combatState = {self.combatState}, cardPositions = {self.cardPositions}, watcherState = {self.watcherState}'
 
 # None: states incomparable
 # True: state1 <= state2
@@ -646,13 +638,16 @@ class SparseDigraph:
     def __init__(self):
         self._outward = dict()
         self._inward = dict()
+        self._labels = dict()
     @property
     def outward(self):
         return self._outward
     @property
     def inward(self):
         return self._inward
-    def addArc(self, fs1, fs2):
+    def label(self, head, tail):
+        return self._labels[(head, tail)]
+    def addArc(self, fs1, fs2, label = None):
         if fs1 in self.outward:
             self.outward[fs1].add(fs2)
         else:
@@ -661,13 +656,15 @@ class SparseDigraph:
             self.inward[fs2].add(fs1)
         else:
             self.inward[fs2] = set([fs1])
+        self._labels[(fs1, fs2)] = label
     def maximalPath(self, endNode):
         currNode = endNode
         path = []
         while currNode in self.inward:
-            path.append(currNode)
-            currNode = list(self.inward[currNode])[0]
-        path.append(currNode)
+            prev = list(self.inward[currNode])[0]
+            path.append((currNode, self.label(prev, currNode)))
+            currNode = prev
+        path.append((currNode, 'start'))
         return path
     
 class StateManager:
@@ -797,10 +794,10 @@ class StateManager:
                 
                 if self._makeGraph:
                     prevFS = FullState(cardPositions = pos, watcherState = ws, combatState = cs, turn = self.turn-1, 
-                    nShuffles = nShuffles, cardSeq = 'before shuffle')
+                    nShuffles = nShuffles)
                     currFS = FullState(cardPositions = currPos, watcherState = ws, combatState = cs, turn = self.turn, 
-                    nShuffles = nextNShuffles, cardSeq = 'after shuffle')
-                    self._digraph.addArc(prevFS, currFS)
+                    nShuffles = nextNShuffles)
+                    self._digraph.addArc(prevFS, currFS, label = 'shuffle')
                 
                 if (currPos.hand, ws) in HANDS:
                     hr = HANDS[(currPos.hand, ws)]
@@ -844,9 +841,9 @@ class StateManager:
                                 lostHP *= 3
                             else:
                                 lostHP = int(1.5*lostHP)
-                            lostHP -= out.block
-                            if lostHP < 0:
-                                lostHP = 0
+                        lostHP -= out.block
+                        if lostHP < 0:
+                            lostHP = 0
                         nextCS = CombatState(pHP = cs.pHP - lostHP, 
                         gnHP = newGNHP, gnBuff = nextBuff)
                     
@@ -854,20 +851,20 @@ class StateManager:
                         print("    results in:", nextPos, nextWS, nextCS)
                     
                     nextFS = FullState(cardPositions = nextPos, watcherState = nextWS, combatState = nextCS, 
-                    turn = self.turn, nShuffles = nextNShuffles, cardSeq = out.playOrder)
+                    turn = self.turn, nShuffles = nextNShuffles)
                     if self._makeGraph:
-                        self._digraph.addArc(currFS, nextFS)
+                        self._digraph.addArc(currFS, nextFS, label = str(out.playOrder))
                     
                     if nextCS.gnHP <= 0:
                         
                         wonCS = CombatState(pHP = cs.pHP, gnHP = nextCS.gnHP, gnBuff = nextCS.gnBuff)
                         wonFS = FullState(cardPositions = nextPos, watcherState = nextWS, combatState = wonCS, turn = self.turn, 
-                        nShuffles = nextNShuffles, cardSeq = out.playOrder)
+                        nShuffles = nextNShuffles)
                         
                         self.updateWins(wonFS)
                         
                         if self._makeGraph:
-                            self._digraph.addArc(currFS, wonFS)
+                            self._digraph.addArc(currFS, wonFS, label = str(out.playOrder))
                         
                     if nextCS.pHP > 0:
                         nextState = (nextWS, nextCS)
@@ -942,14 +939,16 @@ def testShuffle(shuffles, pHP = 61, gnHP = 106, startDeck = MY_DECK):
         out = list(sm.winStats)
         out.sort()
         out = tuple(out)
-        print("sm.winStates =")
+        print("\tsm.winStates =")
         for winState in sm.winStates:
             if sm.winStates[winState]:
-                print("\t", winState)
+                print("\t\t", winState)
         print("out =", out, "sm.winStats =", sm.winStats)
         myPath = sm.getWinPath()
+        print("\twin path =")
         for elt in myPath:
-            print('\t', elt)	
+            print("\t\t", elt[0])
+            print("\t\t", elt[1])
 
 def sampleSim(nTrials = 100, pHP = 61, gnHP = 106, verbose = False, startDeck = MY_DECK):
     nWins = 0
