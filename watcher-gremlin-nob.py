@@ -73,7 +73,7 @@ BLOCKS[Card.SAFETY] = 12
 
 POWERS = set([])
 
-START_DECK = tuple([Card.STRIKE]*4+[Card.DEFEND]*4+[Card.ERUPTION,Card.VIGILANCE,Card.ASCENDERS_BANE])
+START_DECK = tuple([Card.ASCENDERS_BANE]+[Card.STRIKE]*4+[Card.DEFEND]*4+[Card.ERUPTION,Card.VIGILANCE])
 
 class CardPositions:
     def __init__(self, draw = [], hand = [], discard = START_DECK):
@@ -237,6 +237,8 @@ class WatcherState:
                 return False
             if self.nProtects > other.nProtects:
                 return False
+            if self.nSafeties > other.nSafeties:
+                return False
             return True
         else:
             return False
@@ -253,6 +255,8 @@ class WatcherState:
                 return False
             if self.nProtects != other.nProtects:
                 return False
+            if self.nSafeties != other.nSafeties:
+                return False
             return True
     # !=
     def __ne__(self, other):
@@ -266,13 +270,15 @@ class WatcherState:
         return other < self
     
     def __hash__(self):
-        return hash((self.stance, self.nMiracles, self.nProtects))
+        return hash((self.stance, self.nMiracles, self.nProtects, self.nSafeties))
     def __str__(self):
         out = STANCE_NAMES[self.stance.value]
         if self.nMiracles:
             out += ',' + str(self.nMiracles) + ' miracle(s)'
         if self.nProtects:
             out += ',' + str(self.nProtects) + ' protects(s)'
+        if self.nSafeties:
+            out += ',' + str(self.nSafeties) + ' safet(y/ies)'
         return out
 
 #ws1 = WatcherState()
@@ -377,17 +383,24 @@ class PlayResult:
             elif card == Card.DECEIVE_REALITY:
                 nSafeties += 1
             elif card == Card.SAFETY:
-                nSafeties -= 1
+                if nSafeties:
+                    nSafeties -= 1
+                else:
+                    self._valid = False
+                    return 
         
         self._valid = True
         self._endWatcher = WatcherState(stance = stance, nMiracles = nMiracles, 
         nProtects = nProtects, nSafeties = nSafeties)
+        
         self._block = block
         self._damage = damage
         self._buffGain = buffGain
         
-        playDiscard = [hand[i] for i in playSeq if not (hand[i] in POWERS or hand[i] in EXHAUSTS)]
-        discardOrder = [hand[i] for i in range(len(hand)) if not i in playSeq and not hand[i] in ETHEREALS]
+        playDiscard = [hand[i] for i in playSeq 
+        if not hand[i] in POWERS and not hand[i] in EXHAUSTS]
+        discardOrder = [hand[i] for i in range(len(hand)) if not i in playSeq 
+        and not hand[i] in ETHEREALS and not hand[i] in RETAINS]
         discardOrder.reverse()
         self._discardOrder = tuple(playDiscard + discardOrder)
         self._playOrder = playSeq
@@ -482,7 +495,7 @@ def handResults(hand, wstate):
     # k = # cards played
     for k in range(hlen+1):
         for sigma in permutations(range(hlen), k):
-            res = PlayResult(wstate, hand, sigma)
+            res = PlayResult(wstate, handList, sigma)
             if res.valid:
                 # out has properties:
                 #   endWatcher
@@ -567,11 +580,12 @@ def memorizeHands(myDeck = START_DECK):
 
 class FullState:
     def __init__(self, cardPositions = CardPositions(), watcherState = WatcherState(), 
-    combatState = CombatState(), turn = 0):
+    combatState = CombatState(), turn = 0, nShuffles = 0):
         self._cardPositions = cardPositions
         self._watcherState = watcherState
         self._combatState = combatState
         self._turn = turn
+        self._nShuffles = nShuffles
         
     @property
     def cardPositions(self):
@@ -585,6 +599,9 @@ class FullState:
     @property
     def turn(self):
         return self._turn
+    @property
+    def nShuffles(self):
+        return self._nShuffles
     
     def __eq__(self, other):
         if isinstance(other, FullState) and self.turn == other.turn and self.cardPositions == other.cardPositions:
@@ -682,12 +699,10 @@ class StateManager:
         startPositions = CardPositions(discard = startDeck)
         startWatcher = WatcherState()
         startCombat = CombatState(pHP = pHP, gnHP = gnHP)
-        self._drawPileSize = len(startPositions.draw)
-        self._discardPileSize = len(startPositions.discard)
         
         # group CombatStates by CardPositions & stance
         self._stateDictionary = dict()
-        self._stateDictionary[startPositions] = set([(startWatcher, startCombat)])
+        self._stateDictionary[(startPositions, 0)] = set([(startWatcher, startCombat)])
     
     @property
     def winStates(self):
@@ -751,36 +766,37 @@ class StateManager:
     def nextTurn(self):
         self._turn += 1
         
-        if self._drawPileSize < 5:
-            #sigma = [i for i in range(self._discardPileSize)]
-            #self._shuffler.shuffle(sigma)
-            sigma = self._shuffles[self._discardPileSize][self._nShuffles]
-            self._nShuffles += 1
-        else:
-            sigma = None
-        
         if self._verbose:
             print("turn", self.turn, "shuffle =", sigma)
         nextDict = dict()
         
-        for pos in self.stateDictionary:
-            
+        for (pos, nShuffles) in self.stateDictionary:
+            nextNShuffles = nShuffles
+            if len(pos.draw) < 5:
+                #sigma = [i for i in range(self._discardPileSize)]
+                #self._shuffler.shuffle(sigma)
+                sigma = self._shuffles[len(pos.discard)][nShuffles]
+                nextNShuffles += 1
+            else:
+                sigma = None
             currPos = pos.nextPositions(sigma)
+            
             if self._verbose:
                 print(pos, "draws into", currPos)
-            for (ws, cs) in self.stateDictionary[pos]:
+            for (ws, cs) in self.stateDictionary[(pos, nShuffles)]:
                 if self._verbose:
                     print("  ws =", ws, "; cs =", cs, "...")
                 
                 if self._makeGraph:
-                    prevFS = FullState(cardPositions = pos, watcherState = ws, combatState = cs, turn = self.turn-1)
-                    currFS = FullState(cardPositions = currPos, watcherState = ws, combatState = cs, turn = self.turn)
+                    prevFS = FullState(cardPositions = pos, watcherState = ws, combatState = cs, turn = self.turn-1, nShuffles = nShuffles)
+                    currFS = FullState(cardPositions = currPos, watcherState = ws, combatState = cs, turn = self.turn, nShuffles = nextNShuffles)
                     self._digraph.addArc(prevFS, currFS)
                 
                 if (currPos.hand, ws) in HANDS:
                     hr = HANDS[(currPos.hand, ws)]
                 else:
                     hr = handResults(currPos.hand, ws)
+                    print("new hand =", currPos.hand, ws)
                     HANDS[(currPos.hand, ws)] = hr
                 
                 for out in hr:
@@ -827,14 +843,15 @@ class StateManager:
                     if self._verbose:
                         print("    results in:", nextPos, nextWS, nextCS)
                     
-                    nextFS = FullState(cardPositions = nextPos, watcherState = nextWS, combatState = nextCS, turn = self.turn)
+                    nextFS = FullState(cardPositions = nextPos, watcherState = nextWS, combatState = nextCS, 
+                    turn = self.turn, nShuffles = nextNShuffles)
                     if self._makeGraph:
                         self._digraph.addArc(currFS, nextFS)
                     
                     if nextCS.gnHP <= 0:
                         
                         wonCS = CombatState(pHP = cs.pHP, gnHP = nextCS.gnHP, gnBuff = nextCS.gnBuff)
-                        wonFS = FullState(cardPositions = nextPos, watcherState = nextWS, combatState = wonCS, turn = self.turn)
+                        wonFS = FullState(cardPositions = nextPos, watcherState = nextWS, combatState = wonCS, turn = self.turn, nShuffles = nextNShuffles)
                         
                         self.updateWins(wonFS)
                         
@@ -843,11 +860,11 @@ class StateManager:
                         
                     if nextCS.pHP > 0:
                         nextState = (nextWS, nextCS)
-                        if not nextPos in nextDict:
-                            nextDict[nextPos] = set()
+                        if not (nextPos, nShuffles) in nextDict:
+                            nextDict[(nextPos, nShuffles)] = set()
                         pops = []
                         less = False
-                        for otherState in nextDict[nextPos]:
+                        for otherState in nextDict[(nextPos, nShuffles)]:
                             #comp = compareStates(nextState, otherState)
                             # otherState = (ws2, cs2)
                             if nextWS <= otherState[0] and nextCS <= otherState[1]:
@@ -860,16 +877,14 @@ class StateManager:
                             #print("nextState =", nextState[0].stance, nextState[0].nMiracles, 
                             #nextState[1].pHP, nextState[1].gnHP, nextState[1].gnBuff, "beats...")
                             for otherState in pops:
-                                nextDict[nextPos].remove(otherState)
+                                nextDict[(nextPos, nShuffles)].remove(otherState)
                                 #print("  otherState =", otherState[0].stance, otherState[0].nMiracles, 
                                 #otherState[1].pHP, otherState[1].gnHP, otherState[1].gnBuff)
                             
-                            nextDict[nextPos].add(nextState)
+                            nextDict[(nextPos, nShuffles)].add(nextState)
                         else:
                             if not less:
-                                nextDict[nextPos].add(nextState)
-                        self._drawPileSize = len(nextPos.draw)
-                        self._discardPileSize = len(nextPos.discard)
+                                nextDict[(nextPos, nShuffles)].add(nextState)
         
         self._stateDictionary = nextDict
         if len(self._stateDictionary) == 0:
@@ -889,7 +904,9 @@ MY_DECK = tuple([Card.ASCENDERS_BANE]*1+[Card.STRIKE]*4+[Card.DEFEND]*4
 +[Card.NONE]*0
 +[Card.HALT]*0
 +[Card.EMPTY_BODY]*0
++[Card.DECEIVE_REALITY]*1
 )
+#HANDS = memorizeHands(myDeck = START_DECK)
 HANDS = memorizeHands(myDeck = MY_DECK)
 #hsize = 0
 
@@ -928,7 +945,6 @@ def sampleSim(nTrials = 100, pHP = 61, gnHP = 106, verbose = False, startDeck = 
     curr = 0
     winStats = dict()
     while curr < nTrials:
-        print("len/size of HANDS =", len(HANDS), sum([len(HANDS[hand]) for hand in HANDS]))
         sm = StateManager(pHP = pHP, gnHP = gnHP, verbose = verbose, startDeck = startDeck, makeGraph = False)
         #print("turn 0 states:", sm.numStates)
         i = 0
@@ -964,6 +980,7 @@ def sampleSim(nTrials = 100, pHP = 61, gnHP = 106, verbose = False, startDeck = 
             print(nWins, "out of", curr, ":", nWins/curr, "; win stats =")
             for winStat in winStats:
                 print("\t", winStats[winStat], "times", winStat)
+            print("len/size of HANDS =", len(HANDS), sum([len(HANDS[hand]) for hand in HANDS]))
     
     print()
     return nWins
