@@ -216,6 +216,9 @@ class WatcherState:
     @property
     def nProtects(self):
         return self._nProtects
+    @property
+    def nSafeties(self):
+        return self._nSafeties
     
     def retainCards(self):
         return [Card.PROTECT]*self.nProtects
@@ -267,9 +270,9 @@ class WatcherState:
     def __str__(self):
         out = STANCE_NAMES[self.stance.value]
         if self.nMiracles:
-            out += ',' + self.nMiracles + 'miracle(s)'
+            out += ',' + str(self.nMiracles) + ' miracle(s)'
         if self.nProtects:
-            out += ',' + self.nProtects + 'protects(s)'
+            out += ',' + str(self.nProtects) + ' protects(s)'
         return out
 
 #ws1 = WatcherState()
@@ -277,6 +280,7 @@ class WatcherState:
 #wset = set([(Card.STRIKE, ws1)])
 #print("hashed correctly?", (Card.STRIKE, ws2) in wset)
 
+# only the "base" Watcher states
 WATCHER_STATES = []
 for stance in STANCES[1:]:
     WATCHER_STATES.append(WatcherState(stance = stance, nMiracles = 1))
@@ -304,13 +308,16 @@ class PlayResult:
     # same for all retaining cards
     # additionally, hand is padded with one Safety for each Deceive Reailty drawn
     
-    def __init__(startWatcher, hand, playSeq):
+    def __init__(self, startWatcher, hand, playSeq):
         stance = startWatcher.stance
         nMiracles = startWatcher.nMiracles
         nProtects = startWatcher.nProtects
         nSafeties = startWatcher.nSafeties
         
         block = 0
+        damage = 0
+        buffGain = 0
+        
         E = 3
         self._valid = None
         
@@ -463,85 +470,40 @@ class PlayResult:
     # >
     def __gt__(self, other):
         return (self >= other) and (self != other)
-    
-
-def playResult(cardSeq, watcherState, E = 3):
-    damage = 0
-    block = 0
-    buffGain = 0
-    stance = watcherState.stance
-    nMiracles = watcherState.nMiracles
-    
-    for card in cardSeq:
-        if card in UNPLAYABLES:
-            return 
-        
-        while E < COSTS[card]:
-            if nMiracles:
-                E += 1
-                buffGain += 3
-                nMiracles -= 1
-            else:
-                return
-        
-        E -= COSTS[card]
-        
-        if card in SKILLS:
-            buffGain += 3
-        
-        if card in BLOCKS:
-            block += BLOCKS[card]
-        
-        if card == Card.STRIKE:
-            if stance == Stance.WRATH:
-                damage += 12
-            else:
-                damage += 6
-        
-        #elif card == Card.DEFEND:
-        #    block += 5
-        
-        elif card == Card.ERUPTION:
-            if stance == Stance.WRATH:
-                damage += 18
-            else:
-                if stance == Stance.CALM:
-                    E += 2
-                damage += 9    
-            stance = Stance.WRATH
-        
-        elif card == Card.VIGILANCE:
-            #block += 8
-            stance = Stance.CALM
-        
-        elif card == Card.HALT:
-            if stance == Stance.WRATH:
-                block += 12
-            else:
-                block += 3
-        
-        elif card == Card.EMPTY_BODY:
-            #block += 7
-            if stance == Stance.CALM:
-                E += 2
-            stance = Stance.NEUTRAL
-        
-    endWatcherState = WatcherState(stance = stance, nMiracles = nMiracles)
-    return endWatcherState, damage, block, buffGain
 
 def handResults(hand, wstate):
     results = set()
-    for k in range(6):
-        for sigma in permutations(range(5), k):
-            play = [hand[si] for si in sigma]
-            out = playResult(play, wstate)
-            if out != None:
-                # out = endWatcherState, damage, block, buffGain
-                discardOrder = [hand[i] for i in range(5) if not i in sigma
-                and not hand[i] in ETHEREALS]
-                discardOrder.reverse()
-                discardOrder = tuple(play + discardOrder)
-                results.add(tuple([discardOrder]) + out)
+    
+    # account for retain cards & Deceive creating a Safety
+    handList = list(hand) + wstate.nProtects*[Card.PROTECT] + wstate.nSafeties*[Card.SAFETY]
+    handList += [Card.SAFETY for card in hand if card == Card.DECEIVE_REALITY]
+    hlen = len(handList)
+    
+    # k = # cards played
+    for k in range(hlen+1):
+        for sigma in permutations(range(hlen), k):
+            res = PlayResult(wstate, hand, sigma)
+            if res.valid:
+                # out has properties:
+                #   endWatcher
+                #   block, damage, buffGain
+                #   discardOrder (cards added to discard pile)
+                #   playOrder (permutation of card order played)
+                
+                # attempt to add it by comparing it to others
+                pops = []
+                less = False
+                for otherRes in results:
+                    if otherRes < res:
+                        pops.append(otherRes)
+                    elif res <= otherRes:
+                        less = True
+                        break
+                if not less:
+                    for otherRes in pops:
+                        results.remove(otherRes)
+                    results.add(res)
+    #print("dealt with hand =", hand, wstate)
     return results
 
 def memorizeHands(myDeck = START_DECK):
@@ -553,53 +515,53 @@ def memorizeHands(myDeck = START_DECK):
     return HANDS
                         
 
-STANCE_COMPARE = dict()
-def setStanceCompare():
-    for stance in STANCES:
-        STANCE_COMPARE[(stance, stance)] = (True, True)
-        if not (stance is Stance.WRATH):
-            STANCE_COMPARE[(Stance.WRATH, stance)] = None
-            STANCE_COMPARE[(stance, Stance.WRATH)] = None
-    STANCE_COMPARE[(Stance.NEUTRAL, Stance.CALM)] = (True, False)
-    STANCE_COMPARE[(Stance.CALM, Stance.NEUTRAL)] = (False, True)
-setStanceCompare()
+#STANCE_COMPARE = dict()
+#def setStanceCompare():
+#    for stance in STANCES:
+#        STANCE_COMPARE[(stance, stance)] = (True, True)
+#        if not (stance is Stance.WRATH):
+#            STANCE_COMPARE[(Stance.WRATH, stance)] = None
+#            STANCE_COMPARE[(stance, Stance.WRATH)] = None
+#    STANCE_COMPARE[(Stance.NEUTRAL, Stance.CALM)] = (True, False)
+#    STANCE_COMPARE[(Stance.CALM, Stance.NEUTRAL)] = (False, True)
+#setStanceCompare()
 
-WATCHER_STATE_COMPARE = dict()
-def setWatcherStateCompare():    
-    for ws1 in WATCHER_STATES:
-        for ws2 in WATCHER_STATES:
-            out = STANCE_COMPARE[(ws1.stance, ws2.stance)]
-            if out is None:
-                WATCHER_STATE_COMPARE[(ws1, ws2)] = None
-            else:
-                lesser, greater = out
-                lesser = lesser and ( ws1.nMiracles <= ws2.nMiracles)
-                greater = greater and (not ws2.nMiracles <= ws1.nMiracles)
-                if lesser or greater:
-                    WATCHER_STATE_COMPARE[(ws1, ws2)] = (lesser, greater)
-                else:
-                    WATCHER_STATE_COMPARE[(ws1, ws2)] = None
-setWatcherStateCompare()
+#WATCHER_STATE_COMPARE = dict()
+#def setWatcherStateCompare():    
+#    for ws1 in WATCHER_STATES:
+#        for ws2 in WATCHER_STATES:
+#            out = STANCE_COMPARE[(ws1.stance, ws2.stance)]
+#            if out is None:
+#                WATCHER_STATE_COMPARE[(ws1, ws2)] = None
+#            else:
+#                lesser, greater = out
+#                lesser = lesser and ( ws1.nMiracles <= ws2.nMiracles)
+#                greater = greater and (not ws2.nMiracles <= ws1.nMiracles)
+#                if lesser or greater:
+#                    WATCHER_STATE_COMPARE[(ws1, ws2)] = (lesser, greater)
+#                else:
+#                    WATCHER_STATE_COMPARE[(ws1, ws2)] = None
+#setWatcherStateCompare()
 
-def washHands():
-    for hand in HANDS:
-        pops = set()
-        for res1 in HANDS[hand]:
-            do1, ws1, dam1, block1, buff1 = res1
-            for res2 in HANDS[hand]:
-                if res1 != res2:
-                    # out = discardOrder, endWatcherState, damage, block, buffGain
-                    do2, ws2, dam2, block2, buff2 = res2
-                    if do1 == do2 and dam1 <= dam2 and block1 <= block2 and buff1 >= buff2:
-                        comp = WATCHER_STATE_COMPARE[(ws1, ws2)]
-                        if not comp is None and comp[0] is True:
-                            pops.add(res1)
-                            #print("res1 =", res1)
-                            #print("<")
-                            #print("res2 =", res2)
-                            #print()
-        for res in pops:
-            HANDS[hand].remove(res)
+#def washHands():
+#    for hand in HANDS:
+#        pops = set()
+#        for res1 in HANDS[hand]:
+#            do1, ws1, dam1, block1, buff1 = res1
+#            for res2 in HANDS[hand]:
+#                if res1 != res2:
+#                    # out = discardOrder, endWatcherState, damage, block, buffGain
+#                    do2, ws2, dam2, block2, buff2 = res2
+#                    if do1 == do2 and dam1 <= dam2 and block1 <= block2 and buff1 >= buff2:
+#                        comp = WATCHER_STATE_COMPARE[(ws1, ws2)]
+#                        if not comp is None and comp[0] is True:
+#                            pops.add(res1)
+#                            #print("res1 =", res1)
+#                            #print("<")
+#                            #print("res2 =", res2)
+#                            #print()
+#        for res in pops:
+#            HANDS[hand].remove(res)
 
 ################# END OF PRE-COMPUTED DATA #################
 
@@ -638,22 +600,22 @@ class FullState:
 # None: states incomparable
 # True: state1 <= state2
 # False: state1 > state2
-def compareStates(state1, state2):
-    ws1, gs1 = state1
-    ws2, gs2 = state2
-    
-    out = WATCHER_STATE_COMPARE[(ws1, ws2)]
-    if out is None:
-        return
-    
-    lesser = out[0] and (gs1.pHP <= gs2.pHP) and (gs1.gnHP >= gs2.gnHP) and (gs1.gnBuff >= gs2.gnBuff)
-    if lesser:
-        return True
-    
-    greater = out[1] and (gs2.pHP <= gs1.pHP) and (gs2.gnHP >= gs1.gnHP) and (gs2.gnBuff >= gs1.gnBuff)
-    if greater:
-        return False
-    return 
+#def compareStates(state1, state2):
+#    ws1, gs1 = state1
+#    ws2, gs2 = state2
+#    
+#    out = WATCHER_STATE_COMPARE[(ws1, ws2)]
+#    if out is None:
+#        return
+#    
+#    lesser = out[0] and (gs1.pHP <= gs2.pHP) and (gs1.gnHP >= gs2.gnHP) and (gs1.gnBuff >= gs2.gnBuff)
+#    if lesser:
+#        return True
+#    
+#    greater = out[1] and (gs2.pHP <= gs1.pHP) and (gs2.gnHP >= gs1.gnHP) and (gs2.gnBuff >= gs1.gnBuff)
+#    if greater:
+#        return False
+#    return 
 
 class SparseDigraph:
     def __init__(self):
@@ -815,25 +777,37 @@ class StateManager:
                     currFS = FullState(cardPositions = currPos, watcherState = ws, combatState = cs, turn = self.turn)
                     self._digraph.addArc(prevFS, currFS)
                 
-                hr = HANDS[(currPos.hand, ws)]
+                if (currPos.hand, ws) in HANDS:
+                    hr = HANDS[(currPos.hand, ws)]
+                else:
+                    hr = handResults(currPos.hand, ws)
+                    HANDS[(currPos.hand, ws)] = hr
+                
                 for out in hr:
+                    
+                    # out has properties:
+                    #   endWatcher
+                    #   block, damage, buffGain
+                    #   discardOrder (cards added to discard pile)
+                    #   playOrder (permutation of card order played)
+                    
                     if self._verbose:
                         discardString = ''
-                        for card in out[0]:
+                        for card in out.discardOrder:
                             discardString += CARD_NAMES[card.value]
-                        print("    result =", discardString, out[1], 
-                        out[2:], "...")
+                        print("    result =", discardString, out.endWatcher, 
+                        (out.block, out.damage, out.buffGain), out.playOrder, "...")
                     
                     # out = (discardOrder, endWatcherState, damage, block, buffGain)
                     nextPos = CardPositions(draw = currPos.draw, hand = [], 
-                    discard = currPos.discard + out[0])
-                    nextWS = out[1]
-                    newGNHP = cs.gnHP - out[2]
+                    discard = currPos.discard + out.discardOrder)
+                    nextWS = out.endWatcher
+                    newGNHP = cs.gnHP - out.damage
                     
                     if self.turn == 1:
                         nextCS = CombatState(pHP = cs.pHP, gnHP = newGNHP)
                     else:
-                        nextBuff = cs.gnBuff + out[4]
+                        nextBuff = cs.gnBuff + out.buffGain
                         if self.turn % 3 == 2:
                             lostHP = 8 + nextBuff
                             if nextWS.stance is Stance.WRATH:
@@ -844,7 +818,7 @@ class StateManager:
                                 lostHP *= 3
                             else:
                                 lostHP = int(1.5*lostHP)
-                            lostHP -= out[3]
+                            lostHP -= out.block
                             if lostHP < 0:
                                 lostHP = 0
                         nextCS = CombatState(pHP = cs.pHP - lostHP, 
@@ -874,11 +848,13 @@ class StateManager:
                         pops = []
                         less = False
                         for otherState in nextDict[nextPos]:
-                            comp = compareStates(nextState, otherState)
-                            if comp is True:
+                            #comp = compareStates(nextState, otherState)
+                            # otherState = (ws2, cs2)
+                            if nextWS <= otherState[0] and nextCS <= otherState[1]:
                                 less = True
+                                break
                             else:
-                                if comp is False:
+                                if nextWS >= otherState[0] and nextCS >= otherState[1]:
                                     pops.append(otherState)
                         if pops:
                             #print("nextState =", nextState[0].stance, nextState[0].nMiracles, 
@@ -890,7 +866,7 @@ class StateManager:
                             
                             nextDict[nextPos].add(nextState)
                         else:
-                            if less is False:
+                            if not less:
                                 nextDict[nextPos].add(nextState)
                         self._drawPileSize = len(nextPos.draw)
                         self._discardPileSize = len(nextPos.discard)
@@ -915,16 +891,19 @@ MY_DECK = tuple([Card.ASCENDERS_BANE]*1+[Card.STRIKE]*4+[Card.DEFEND]*4
 +[Card.EMPTY_BODY]*0
 )
 HANDS = memorizeHands(myDeck = MY_DECK)
-hsize = 0
+#hsize = 0
 
-for hand in HANDS:
-    hsize += len(HANDS[hand])
-print("len(HANDS) =", len(HANDS), "size =", hsize)
-washHands()
-hsize = 0
-for hand in HANDS:
-    hsize += len(HANDS[hand])
-print("len(HANDS) =", len(HANDS), "size =", hsize)
+#for hand in HANDS:
+#    hsize += len(HANDS[hand])
+print("len(HANDS) =", len(HANDS), "size =", sum([len(HANDS[hand]) for hand in HANDS]))
+
+#washHands()
+#hsize = 0
+#for hand in HANDS:
+#    hsize += len(HANDS[hand])
+#print("len(HANDS) =", len(HANDS), "size =", hsize)
+
+#HANDS = dict()
 
 def testShuffle(shuffles, pHP = 61, gnHP = 106, startDeck = MY_DECK):
     sm = StateManager(pHP = pHP, gnHP = gnHP, verbose = False, startDeck = startDeck, 
@@ -949,6 +928,7 @@ def sampleSim(nTrials = 100, pHP = 61, gnHP = 106, verbose = False, startDeck = 
     curr = 0
     winStats = dict()
     while curr < nTrials:
+        print("len/size of HANDS =", len(HANDS), sum([len(HANDS[hand]) for hand in HANDS]))
         sm = StateManager(pHP = pHP, gnHP = gnHP, verbose = verbose, startDeck = startDeck, makeGraph = False)
         #print("turn 0 states:", sm.numStates)
         i = 0
