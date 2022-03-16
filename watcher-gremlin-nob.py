@@ -535,7 +535,7 @@ class HandResult:
     block, damage, buffGain):#, E = 3):
         self._handList = tuple(handList)
         self._playList = tuple(playList)
-        self._discardOrder = tuple(playList + flipMap(handList))
+        self._discardOrder = tuple(playList) + tuple(flipMap(handList))
         
         self._watcherState = wstate
         self._block = block
@@ -582,6 +582,7 @@ class HandResult:
         out += str(self.watcherState)
         out += '; discard = ' + str(self.discardOrder)
         out += '; played = ' + str(self.playList)
+        return out
     
     # <= 
     def __le__(self, other):
@@ -624,7 +625,6 @@ class HandResult:
     def __gt__(self, other):
         return (self >= other) and (self != other)
 
-
 class HandManager:
     def __init__(self, deck):
         self._deck = deck
@@ -664,7 +664,7 @@ class HandManager:
             nProtects = nProtects, nSafeties = nSafeties)
             
             # block, damage, buffGain = 0, 0, 0
-            currResult = HandResult(handList, playList, newWS, 
+            currResult = HandResult(handList, [], newWS, 
             0, 0, 0)
             
             # update newResults with all possible (optimal) hands
@@ -693,7 +693,7 @@ class HandManager:
     def _generateResults(self, results, currResult, E = 3):
         
         # add the "do-nothing" result to the set
-        self._add(self, results, currResult)
+        self._add(results, currResult)
         
         # for every playable card: 
         #   [x] decrement energy/nMiracles if needed
@@ -728,8 +728,8 @@ class HandManager:
             newBuffGain = currResult.buffGain + 3*mNeeded
             
             # retain decrement
-            nProtects = wstate.nProtects
-            nSafeties = wstate.nSafeties
+            nProtects = currResult.watcherState.nProtects
+            nSafeties = currResult.watcherState.nSafeties
             
             if card == Card.PROTECT:
                 nProtects -= 1
@@ -745,7 +745,7 @@ class HandManager:
             if card in SKILLS:
                 newBuffGain += 3
             
-            stance = currResult.stance
+            stance = currResult.watcherState.stance
             if card in ATTACKS:
                 if stance == Stance.WRATH:
                     damage = currResult.damage + ATTACKS[card]*2
@@ -757,9 +757,9 @@ class HandManager:
             # update playList/handList
             # don't add played powers or exhaust cards to discard
             if card in EXHAUSTS or card in POWERS:
-                newPlayOrder = currResult.playOrder
+                newPlayList = currResult.playList
             else:
-                newPlayOrder = currResult.playOrder + tuple([card])
+                newPlayList = currResult.playList + tuple([card])
             
             # only update the hand if the card isn't a retaining card
             newHandList = currResult.handList[:i] + currResult.handList[i+1:]
@@ -784,10 +784,29 @@ class HandManager:
             elif card == Card.DECEIVE_REALITY:
                 nSafeties += 1
             
-            newResult = HandResult(newHandList, newPlayList, wstate, 
+            newWatcher = WatcherState(stance = stance, nMiracles = nMiracles,
+            nProtects = nProtects, nSafeties = nSafeties)
+            newResult = HandResult(newHandList, newPlayList, newWatcher , 
             block, damage, newBuffGain)
             self._generateResults(results, newResult, E = currE)
-            
+    
+    def allResults(self):
+        ctr = 0
+        for hand in permutations(self._deck, 5):
+            for wstate in WATCHER_STATES:
+                if (hand, wstate) in self._HandResults:
+                    continue
+                else:
+                    out = self.getResults(hand, wstate)
+                    ctr += len(out)
+        print("ctr =", ctr)
+    
+hm = HandManager(START_DECK)
+hr = hm.getResults((Card.STRIKE, Card.STRIKE, Card.STRIKE, Card.STRIKE, Card.STRIKE), WatcherState())
+for res in hr:
+    print(res)
+hm.allResults()
+
 #STANCE_COMPARE = dict()
 #def setStanceCompare():
 #    for stance in STANCES:
@@ -1255,7 +1274,7 @@ def sampleSim(nTrials = 100, pHP = 61, gnHP = 106, verbose = False, startDeck = 
     print()
     return nWins
 
-if False:
+if True:
     NTRIALS = 1000
     conditions = [(NTRIALS, 61, 106)] #, (NTRIALS, 56, 106)]
 
