@@ -57,7 +57,9 @@ Card.EMPTY_BODY, Card.DECEIVE_REALITY, Card.SAFETY]:
     COSTS[card] = 1
 for card in [Card.ERUPTION, Card.VIGILANCE, Card.PROTECT]:
     COSTS[card] = 2
-ATTACKS = set([Card.STRIKE, Card.ERUPTION])
+ATTACKS = dict()
+ATTACKS[Card.STRIKE] = 6
+ATTACKS[Card.ERUPTION] = 9
 
 SKILLS = set([Card.DEFEND, Card.VIGILANCE, 
 Card.HALT, Card.EMPTY_BODY, Card.PROTECT, Card.DECEIVE_REALITY, Card.SAFETY])
@@ -127,7 +129,6 @@ class CardPositions:
         newHand = newDraw[:5]
         newDraw = newDraw[5:]
         return CardPositions(newDraw, newHand, newDiscard)
-
 
 class CombatState:
     def __init__(self, pHP = 61, gnHP = 106, gnBuff = 0):
@@ -526,8 +527,267 @@ def memorizeHands(myDeck = START_DECK):
             if not (hand, wstate) in HANDS:
                 HANDS[(hand, wstate)] = handResults(hand, wstate)
     return HANDS
-                        
 
+flipMap = lambda x: [x[len(x)-1-i] for i in range(len(x))]
+
+class HandResult:
+    def __init__(self, handList, playList, wstate, 
+    block, damage, buffGain):#, E = 3):
+        self._handList = tuple(handList)
+        self._playList = tuple(playList)
+        self._discardOrder = tuple(playList + flipMap(handList))
+        
+        self._watcherState = wstate
+        self._block = block
+        self._damage = damage
+        self._buffGain = buffGain
+        
+        #self._E = E
+        
+    @property
+    def handList(self):
+        return self._handList
+    @property
+    def playList(self):
+        return self._playList
+    @property
+    def discardOrder(self):
+        return self._discardOrder
+    @property
+    def watcherState(self):
+        return self._watcherState
+    @property
+    def block(self):
+        return self._block
+    @property
+    def damage(self):
+        return self._damage
+    @property
+    def buffGain(self):
+        return self._buffGain
+    #@property
+    #def E(self):
+    #    return self._E
+    
+    # hash/compare only using the 'end-turn' results
+    # ignore actual card play order and hand order
+    
+    def __hash__(self):
+        return hash((self.discardOrder, self.watcherState,
+        self.block, self.damage, self.buffGain
+        ))
+    
+    def __str__(self):
+        out = f'block/damage/buffGain = {self.block}/{self.damage}/{self.buffGain}'
+        out += str(self.watcherState)
+        out += '; discard = ' + str(self.discardOrder)
+        out += '; played = ' + str(self.playList)
+    
+    # <= 
+    def __le__(self, other):
+        if self.discardOrder == other.discardOrder:
+            if self.watcherState <= other.watcherState:
+                if self.block > other.block:
+                    return False
+                if self.damage > other.damage:
+                    return False
+                if self.buffGain < other.buffGain:
+                    return False
+                return True
+            return False
+        return False
+    # >=
+    def __ge__(self, other):
+        return other <= self
+    
+    # == 
+    def __eq__(self, other):
+        if self.discardOrder == other.discardOrder:
+            if self.watcherState == other.watcherState:
+                if self.block != other.block:
+                    return False
+                if self.damage != other.damage:
+                    return False
+                if self.buffGain != other.buffGain:
+                    return False
+                return True
+            return False
+        return False
+    # !=
+    def __ne__(self, other):
+        return not (self == other)
+    
+    # <
+    def __lt__(self, other):
+        return (self <= other) and (self != other)
+    # >
+    def __gt__(self, other):
+        return (self >= other) and (self != other)
+
+
+class HandManager:
+    def __init__(self, deck):
+        self._deck = deck
+        self._HandResults = dict()
+    
+    def getResults(self, hand, wstate):
+        if (hand, wstate) in self._HandResults:
+            return self._HandResults[(hand, wstate)]
+        else:
+            newResults = set()
+            
+            nMiracles = wstate.nMiracles
+            nProtects = wstate.nProtects
+            nSafeties = wstate.nSafeties
+            # put counters for other retaining cards here
+            
+            # keep track of non-RETAINS (and non-Ascender's Bane)
+            handList = []
+            
+            for card in hand:
+                if card == Card.PROTECT:
+                    nProtects += 1
+                elif card == Card.SAFETY:
+                    nSafeties += 1
+                #elif card == other retaining card...
+                # blah += 1, etc
+                
+                ### eventually, code for DEUS_EX_MACHINA ###
+                
+                # elif card == Card.DEUS_EX_MACHINA:
+                # nMiracle += 2
+                
+                elif not (card == Card.ASCENDERS_BANE):
+                    handList.append(card)
+            
+            newWS = WatcherState(stance = wstate.stance, nMiracles = nMiracles, 
+            nProtects = nProtects, nSafeties = nSafeties)
+            
+            # block, damage, buffGain = 0, 0, 0
+            currResult = HandResult(handList, playList, newWS, 
+            0, 0, 0)
+            
+            # update newResults with all possible (optimal) hands
+            self._generateResults(newResults, currResult, E = 3)
+            
+            self._HandResults[(hand, wstate)] = newResults
+        return self._HandResults[(hand, wstate)]
+    
+    # add to set only if it is not inferior to other results
+    def _add(self, results, currResult):
+        
+        # compare to other results
+        # quit if curr <= other
+        # delete all others s.t. other <= self
+        pops = []
+        for otherResult in results:
+            if currResult <= otherResult:
+                return
+            if otherResult <= currResult:
+                pops.append(otherResult)
+        for otherResult in pops:
+            results.remove(otherResult)
+        results.add(currResult)
+        return 
+    
+    def _generateResults(self, results, currResult, E = 3):
+        
+        # add the "do-nothing" result to the set
+        self._add(self, results, currResult)
+        
+        # for every playable card: 
+        #   [x] decrement energy/nMiracles if needed
+        #   [x] decrement n{RetainingCard} if relevant
+        #   apply card effect ([x] damage, [x] block, stance change, etc)
+        #   [x] increment buffGain
+        #   [x] add played card to playedCards
+        #   [x] remove played card from handList
+        
+        handAndRetains = list(currResult.handList)
+        if currResult.watcherState.nProtects:
+            handAndRetains += [Card.PROTECT]
+        if currResult.watcherState.nSafeties:
+            handAndRetains += [Card.SAFETY]
+        # implement other retains here...
+        
+        for i in range(len(handAndRetains)):
+            
+            card = handAndRetains[i]
+            
+            # deal with energy... 
+            mNeeded = max(0, COSTS[card] - E)
+            if mNeeded > currResult.watcherState.nMiracles:
+                continue
+            nMiracles = currResult.watcherState.nMiracles - mNeeded
+            if mNeeded:
+                currE = 0
+            else:
+                currE = E - COSTS[card]
+            
+            # buff from Miracles
+            newBuffGain = currResult.buffGain + 3*mNeeded
+            
+            # retain decrement
+            nProtects = wstate.nProtects
+            nSafeties = wstate.nSafeties
+            
+            if card == Card.PROTECT:
+                nProtects -= 1
+            elif card == Card.SAFETY:
+                nSafeties -= 1
+            
+            # update block
+            if card in BLOCKS:
+                block = currResult.block + BLOCKS[card]
+            else:
+                block = currResult.block
+            
+            if card in SKILLS:
+                newBuffGain += 3
+            
+            stance = currResult.stance
+            if card in ATTACKS:
+                if stance == Stance.WRATH:
+                    damage = currResult.damage + ATTACKS[card]*2
+                else:
+                    damage = currResult.damage + ATTACKS[card]
+            else:
+                damage = currResult.damage
+            
+            # update playList/handList
+            # don't add played powers or exhaust cards to discard
+            if card in EXHAUSTS or card in POWERS:
+                newPlayOrder = currResult.playOrder
+            else:
+                newPlayOrder = currResult.playOrder + tuple([card])
+            
+            # only update the hand if the card isn't a retaining card
+            newHandList = currResult.handList[:i] + currResult.handList[i+1:]
+            
+            # other card effects
+            # stance cards first
+            if card == Card.ERUPTION:
+                if stance == Stance.CALM:
+                    currE += 2
+                stance = Stance.WRATH
+            elif card == Card.EMPTY_BODY:
+                if stance == Stance.CALM:
+                    currE += 2
+                stance = Stance.NEUTRAL
+            elif card == Card.VIGILANCE:
+                stance = Stance.CALM
+            
+            elif card == Card.HALT:
+                if stance == Stance.WRATH:
+                    block += 9
+            
+            elif card == Card.DECEIVE_REALITY:
+                nSafeties += 1
+            
+            newResult = HandResult(newHandList, newPlayList, wstate, 
+            block, damage, newBuffGain)
+            self._generateResults(results, newResult, E = currE)
+            
 #STANCE_COMPARE = dict()
 #def setStanceCompare():
 #    for stance in STANCES:
@@ -995,7 +1255,7 @@ def sampleSim(nTrials = 100, pHP = 61, gnHP = 106, verbose = False, startDeck = 
     print()
     return nWins
 
-if True:
+if False:
     NTRIALS = 1000
     conditions = [(NTRIALS, 61, 106)] #, (NTRIALS, 56, 106)]
 
