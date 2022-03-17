@@ -656,11 +656,17 @@ class HandResult:
 class HandManager:
     def __init__(self, deck):
         self._deck = deck
-        self._HandResults = dict()
+        self._handResults = dict()
+    
+    def __len__(self):
+        return len(self._handResults)
+    
+    def size(self):
+        return sum([len(self._handResults[hand]) for hand in self._handResults])
     
     def getResults(self, hand, wstate):
-        if (hand, wstate) in self._HandResults:
-            return self._HandResults[(hand, wstate)]
+        if (hand, wstate) in self._handResults:
+            return self._handResults[(hand, wstate)]
         else:
             newResults = set()
             
@@ -705,8 +711,8 @@ class HandManager:
             # update newResults with all possible (optimal) hands
             self._generateResults(newResults, currResult, E = 3)
             
-            self._HandResults[(hand, wstate)] = newResults
-        return self._HandResults[(hand, wstate)]
+            self._handResults[(hand, wstate)] = newResults
+        return self._handResults[(hand, wstate)]
     
     # add to set only if it is not inferior to other results
     def _add(self, results, currResult):
@@ -850,7 +856,7 @@ class HandManager:
         ctr = 0
         for hand in permutations(self._deck, 5):
             for wstate in WATCHER_STATES:
-                if (hand, wstate) in self._HandResults:
+                if (hand, wstate) in self._handResults:
                     continue
                 else:
                     out = self.getResults(hand, wstate)
@@ -1133,12 +1139,14 @@ class StateManager:
                     nShuffles = nextNShuffles)
                     self._digraph.addArc(prevFS, currFS, label = 'shuffle')
                 
-                if (currPos.hand, ws) in HANDS:
-                    hr = HANDS[(currPos.hand, ws)]
-                else:
-                    hr = handResults(currPos.hand, ws)
-                    #print("new hand =", currPos.hand, ws)
-                    HANDS[(currPos.hand, ws)] = hr
+                #if (currPos.hand, ws) in HANDS:
+                #    hr = HANDS[(currPos.hand, ws)]
+                #else:
+                #    hr = handResults(currPos.hand, ws)
+                #    #print("new hand =", currPos.hand, ws)
+                #    HANDS[(currPos.hand, ws)] = hr
+                
+                hr = hm2.getResults(currPos.hand, ws)
                 
                 for out in hr:
                     
@@ -1150,13 +1158,13 @@ class StateManager:
                     
                     if self._verbose:
                         discardString = ', '.join([CARD_NAMES[card.value] for card in out.discardOrder]) + ']'
-                        print("    result =", discardString, out.endWatcher, 
+                        print("    result =", discardString, out.watcherState, 
                         (out.block, out.damage, out.buffGain), out.playOrder, "...")
                     
                     # out = (discardOrder, endWatcherState, damage, block, buffGain)
                     nextPos = CardPositions(draw = currPos.draw, hand = [], 
                     discard = currPos.discard + out.discardOrder)
-                    nextWS = out.endWatcher
+                    nextWS = out.watcherState
                     newGNHP = cs.gnHP - out.damage
                     
                     if self.turn == 1:
@@ -1242,22 +1250,24 @@ class StateManager:
 MY_DECK = tuple([Card.ASCENDERS_BANE]*1+[Card.STRIKE]*4+[Card.DEFEND]*4
 +[Card.ERUPTION,Card.VIGILANCE]
 +[Card.NONE]*0
-+[Card.HALT]*0
++[Card.HALT]*1
 +[Card.PROTECT]*0
 +[Card.EMPTY_BODY]*0
 +[Card.DECEIVE_REALITY]*0
++[Card.CRESCENDO]*0
++[Card.TRANQUILITY]*0
 )
 
 hm2 = HandManager(MY_DECK)
-hm2.allResults()
+#hm2.allResults()
 
 #HANDS = memorizeHands(myDeck = START_DECK)
-HANDS = memorizeHands(myDeck = MY_DECK)
+#HANDS = memorizeHands(myDeck = MY_DECK)
 #hsize = 0
 
 #for hand in HANDS:
 #    hsize += len(HANDS[hand])
-print("len(HANDS) =", len(HANDS), "size =", sum([len(HANDS[hand]) for hand in HANDS]))
+#print("len(HANDS) =", len(HANDS), "size =", sum([len(HANDS[hand]) for hand in HANDS]))
 
 #washHands()
 #hsize = 0
@@ -1327,7 +1337,7 @@ def sampleSim(nTrials = 100, pHP = 61, gnHP = 106, verbose = False, startDeck = 
             print(nWins, "out of", curr, ":", nWins/curr, "; win stats =")
             for winStat in winStats:
                 print("\t", winStats[winStat], "times", winStat)
-            print("len/size of HANDS =", len(HANDS), sum([len(HANDS[hand]) for hand in HANDS]))
+            print("len/size of hm2 =", len(hm2), hm2.size())
     
     print()
     return nWins
