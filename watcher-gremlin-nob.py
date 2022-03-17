@@ -1,7 +1,7 @@
 import random
 import math
 import queue
-from enum import Enum
+from enum import Enum, auto
 from itertools import product
 from itertools import permutations
 from itertools import combinations
@@ -28,35 +28,41 @@ from itertools import combinations
 #################  #################
 class Card(Enum):
     NONE = 0
-    STRIKE = 1
-    DEFEND = 2
-    ERUPTION = 3
-    VIGILANCE = 4
-    ASCENDERS_BANE = 5
-    HALT = 6
-    EMPTY_BODY = 7
-    PROTECT = 8
-    DECEIVE_REALITY = 9
-    SAFETY = 10
+    STRIKE = auto()
+    DEFEND = auto()
+    ERUPTION = auto()
+    VIGILANCE = auto()
+    
+    ASCENDERS_BANE = auto()
+    HALT = auto()
+    EMPTY_BODY = auto()
+    PROTECT = auto()
+    DECEIVE_REALITY = auto()
+    
+    SAFETY = auto()
+    CRESCENDO = auto()
+    TRANQUILITY = auto()
     
     def __str__(self):
         return CARD_NAMES[self.value]
 
-ALL_CARDS = [Card.NONE, Card.STRIKE, Card.DEFEND, Card.ERUPTION, Card.VIGILANCE, Card.ASCENDERS_BANE, 
-Card.HALT, Card.EMPTY_BODY, Card.PROTECT, Card.DECEIVE_REALITY, Card.SAFETY]
-CARD_NAMES = ['none', 'Strike', 'Defend', 'Eruption', 'Vigilance', 'A. Bane', 
-'Halt', 'E. Body', 'Protect', 'D. Reality', 'Safety']
+ALL_CARDS = [Card.NONE, Card.STRIKE, Card.DEFEND, Card.ERUPTION, Card.VIGILANCE, 
+Card.ASCENDERS_BANE, Card.HALT, Card.EMPTY_BODY, Card.PROTECT, Card.DECEIVE_REALITY, 
+Card.SAFETY, Card.CRESCENDO, Card.TRANQUILITY]
+CARD_NAMES = ['none', 'Strike', 'Defend', 'Eruption', 'Vigilance', 
+'A. Bane', 'Halt', 'E. Body', 'Protect', 'D. Reality', 
+'Safety', 'Crescendo', 'Tranquility']
 
 UNPLAYABLES = set([Card.NONE, Card.ASCENDERS_BANE])
 ETHEREALS = set([Card.ASCENDERS_BANE])
-EXHAUSTS = set([Card.SAFETY])
-RETAINS = set([Card.PROTECT, Card.SAFETY])
+EXHAUSTS = set([Card.SAFETY, Card.CRESCENDO, Card.TRANQUILITY])
+RETAINS = set([Card.PROTECT, Card.SAFETY, Card.CRESCENDO, Card.TRANQUILITY])
 
 COSTS = dict()
 for card in [Card.HALT]:
     COSTS[card] = 0
-for card in [Card.STRIKE, Card.DEFEND, 
-Card.EMPTY_BODY, Card.DECEIVE_REALITY, Card.SAFETY]:
+for card in [Card.STRIKE, Card.DEFEND, Card.EMPTY_BODY, Card.DECEIVE_REALITY, Card.SAFETY, 
+Card.CRESCENDO, Card.TRANQUILITY]:
     COSTS[card] = 1
 for card in [Card.ERUPTION, Card.VIGILANCE, Card.PROTECT]:
     COSTS[card] = 2
@@ -205,11 +211,14 @@ STANCE_NAMES = ['none', 'neutral', 'wrath', 'calm', 'divinity']
 
 class WatcherState:
     def __init__(self, stance = Stance.NEUTRAL, nMiracles = 1, 
-    nProtects = 0, nSafeties = 0):
+    nProtects = 0, nSafeties = 0, 
+    nCrescendoes = 0, nTraquilities = 0):
         self._stance = stance
         self._nMiracles = nMiracles
         self._nProtects = nProtects
         self._nSafeties = nSafeties
+        self._nCrescendoes = nCrescendoes
+        self._nTraquilities = nTraquilities
     
     @property
     def stance(self):
@@ -224,8 +233,12 @@ class WatcherState:
     def nSafeties(self):
         return self._nSafeties
     
-    def retainCards(self):
-        return [Card.PROTECT]*self.nProtects
+    @property
+    def nCrescendoes(self):
+        return self._nCrescendoes
+    @property
+    def nTraquilities(self):
+        return self._nTraquilities
     
     # for comparisons...
     # true comparison --> True
@@ -242,6 +255,10 @@ class WatcherState:
             if self.nProtects > other.nProtects:
                 return False
             if self.nSafeties > other.nSafeties:
+                return False
+            if self.nCrescendoes > other.nCrescendoes:
+                return False
+            if self.nTraquilities > other.nTraquilities:
                 return False
             return True
         else:
@@ -260,6 +277,10 @@ class WatcherState:
             if self.nProtects != other.nProtects:
                 return False
             if self.nSafeties != other.nSafeties:
+                return False
+            if self.nCrescendoes != other.nCrescendoes:
+                return False
+            if self.nTraquilities != other.nTraquilities:
                 return False
             return True
     # !=
@@ -283,6 +304,10 @@ class WatcherState:
             out += ', ' + str(self.nProtects) + ' protects(s)'
         if self.nSafeties:
             out += ', ' + str(self.nSafeties) + ' safet(y/ies)'
+        if self.nCrescendoes:
+            out += ', ' + str(self.nCrescendoes) + ' crescendo(es)'
+        if self.nTraquilities:
+            out += ', ' + str(self.nTraquilities) + ' tranquilit(y/ies)'
         return out
 
 #ws1 = WatcherState()
@@ -306,7 +331,7 @@ WATCHER_STATES = tuple(WATCHER_STATES)
 
 
 ## better organization for results from playing a sequence of cards ##
-## ... work in progress... ###
+## DEPRECATED ###
 class PlayResult:
     # pass in startWatcherState, hand, permutation, etc
     # return object with:
@@ -642,6 +667,8 @@ class HandManager:
             nMiracles = wstate.nMiracles
             nProtects = wstate.nProtects
             nSafeties = wstate.nSafeties
+            nCrescendoes = wstate.nCrescendoes
+            nTraquilities = wstate.nTraquilities
             # put counters for other retaining cards here
             
             # keep track of non-RETAINS (and non-Ascender's Bane)
@@ -652,6 +679,10 @@ class HandManager:
                     nProtects += 1
                 elif card == Card.SAFETY:
                     nSafeties += 1
+                elif card == Card.CRESCENDO:
+                    nCrescendoes += 1
+                elif card == Card.TRANQUILITY:
+                    nTraquilities += 1
                 #elif card == other retaining card...
                 # blah += 1, etc
                 
@@ -664,7 +695,8 @@ class HandManager:
                     handList.append(card)
             
             newWS = WatcherState(stance = wstate.stance, nMiracles = nMiracles, 
-            nProtects = nProtects, nSafeties = nSafeties)
+            nProtects = nProtects, nSafeties = nSafeties, 
+            nCrescendoes = nCrescendoes, nTraquilities = nTraquilities)
             
             # block, damage, buffGain = 0, 0, 0
             currResult = HandResult(handList, [], newWS, 
@@ -711,6 +743,10 @@ class HandManager:
             handAndRetains += [Card.PROTECT]
         if currResult.watcherState.nSafeties:
             handAndRetains += [Card.SAFETY]
+        if currResult.watcherState.nCrescendoes:
+            handAndRetains += [Card.CRESCENDO]
+        if currResult.watcherState.nTraquilities:
+            handAndRetains += [Card.TRANQUILITY]
         # implement other retains here...
         
         for i in range(len(handAndRetains)):
@@ -735,11 +771,17 @@ class HandManager:
             # retain decrement
             nProtects = currResult.watcherState.nProtects
             nSafeties = currResult.watcherState.nSafeties
+            nCrescendoes = currResult.watcherState.nCrescendoes
+            nTraquilities = currResult.watcherState.nTraquilities
             
             if card == Card.PROTECT:
                 nProtects -= 1
             elif card == Card.SAFETY:
                 nSafeties -= 1
+            elif card == Card.CRESCENDO:
+                nCrescendoes -= 1
+            elif card == Card.TRANQUILITY:
+                nTraquilities -= 1
             
             # update block
             if card in BLOCKS:
@@ -789,8 +831,17 @@ class HandManager:
             elif card == Card.DECEIVE_REALITY:
                 nSafeties += 1
             
+            elif card == Card.CRESCENDO:
+                if stance == Stance.CALM:
+                    currE += 2
+                stance = Stance.WRATH
+            elif card == Card.TRANQUILITY:
+                stance = Stance.CALM
+            
             newWatcher = WatcherState(stance = stance, nMiracles = nMiracles,
-            nProtects = nProtects, nSafeties = nSafeties)
+            nProtects = nProtects, nSafeties = nSafeties, 
+            nCrescendoes = nCrescendoes, nTraquilities = nTraquilities)
+            
             newResult = HandResult(newHandList, newPlayList, newWatcher , 
             block, damage, newBuffGain)
             self._generateResults(results, newResult, E = currE)
