@@ -42,16 +42,18 @@ class Card(Enum):
     SAFETY = auto()
     CRESCENDO = auto()
     TRANQUILITY = auto()
+    LIKE_WATER = auto()
+    MENTAL_FORTRESS = auto()
     
     def __str__(self):
         return CARD_NAMES[self.value]
 
 ALL_CARDS = [Card.NONE, Card.STRIKE, Card.DEFEND, Card.ERUPTION, Card.VIGILANCE, 
 Card.ASCENDERS_BANE, Card.HALT, Card.EMPTY_BODY, Card.PROTECT, Card.DECEIVE_REALITY, 
-Card.SAFETY, Card.CRESCENDO, Card.TRANQUILITY]
+Card.SAFETY, Card.CRESCENDO, Card.TRANQUILITY, Card.LIKE_WATER, Card.MENTAL_FORTRESS]
 CARD_NAMES = ['none', 'Strike', 'Defend', 'Eruption', 'Vigilance', 
 'A. Bane', 'Halt', 'E. Body', 'Protect', 'D. Reality', 
-'Safety', 'Crescendo', 'Tranquility']
+'Safety', 'Crescendo', 'Tranquility', 'Like Water', 'Mental Fortress']
 
 UNPLAYABLES = set([Card.NONE, Card.ASCENDERS_BANE])
 ETHEREALS = set([Card.ASCENDERS_BANE])
@@ -62,7 +64,7 @@ COSTS = dict()
 for card in [Card.HALT]:
     COSTS[card] = 0
 for card in [Card.STRIKE, Card.DEFEND, Card.EMPTY_BODY, Card.DECEIVE_REALITY, Card.SAFETY, 
-Card.CRESCENDO, Card.TRANQUILITY]:
+Card.CRESCENDO, Card.TRANQUILITY, Card.LIKE_WATER, Card.MENTAL_FORTRESS]:
     COSTS[card] = 1
 for card in [Card.ERUPTION, Card.VIGILANCE, Card.PROTECT]:
     COSTS[card] = 2
@@ -70,8 +72,8 @@ ATTACKS = dict()
 ATTACKS[Card.STRIKE] = 6
 ATTACKS[Card.ERUPTION] = 9
 
-SKILLS = set([Card.DEFEND, Card.VIGILANCE, 
-Card.HALT, Card.EMPTY_BODY, Card.PROTECT, Card.DECEIVE_REALITY, Card.SAFETY])
+SKILLS = set([Card.DEFEND, Card.VIGILANCE, Card.HALT, Card.EMPTY_BODY, Card.PROTECT, 
+Card.DECEIVE_REALITY, Card.SAFETY])
 
 BLOCKS = dict()
 BLOCKS[Card.DEFEND] = 5
@@ -82,7 +84,7 @@ BLOCKS[Card.PROTECT] = 12
 BLOCKS[Card.DECEIVE_REALITY] = 4
 BLOCKS[Card.SAFETY] = 12
 
-POWERS = set([])
+POWERS = set([Card.LIKE_WATER, Card.MENTAL_FORTRESS])
 
 START_DECK = tuple([Card.ASCENDERS_BANE]+[Card.STRIKE]*4+[Card.DEFEND]*4+[Card.ERUPTION,Card.VIGILANCE])
 
@@ -212,13 +214,18 @@ STANCE_NAMES = ['none', 'neutral', 'wrath', 'calm', 'divinity']
 class WatcherState:
     def __init__(self, stance = Stance.NEUTRAL, nMiracles = 1, 
     nProtects = 0, nSafeties = 0, 
-    nCrescendoes = 0, nTraquilities = 0):
+    nCrescendoes = 0, nTraquilities = 0, 
+    likeWater = 0, mentalFortress = 0):
         self._stance = stance
         self._nMiracles = nMiracles
+        
         self._nProtects = nProtects
         self._nSafeties = nSafeties
         self._nCrescendoes = nCrescendoes
         self._nTraquilities = nTraquilities
+        
+        self._likeWater = likeWater
+        self._mentalFortress = mentalFortress
     
     @property
     def stance(self):
@@ -240,6 +247,12 @@ class WatcherState:
     def nTraquilities(self):
         return self._nTraquilities
     
+    @property
+    def likeWater(self):
+        return self._likeWater
+    @property
+    def mentalFortress(self):
+        return self._mentalFortress
     # for comparisons...
     # true comparison --> True
     # false comparison --> False
@@ -259,6 +272,10 @@ class WatcherState:
             if self.nCrescendoes > other.nCrescendoes:
                 return False
             if self.nTraquilities > other.nTraquilities:
+                return False
+            if self.likeWater > other.likeWater:
+                return False
+            if self.mentalFortress > other.mentalFortress:
                 return False
             return True
         else:
@@ -282,6 +299,10 @@ class WatcherState:
                 return False
             if self.nTraquilities != other.nTraquilities:
                 return False
+            if self.likeWater != other.likeWater:
+                return False
+            if self.mentalFortress > other.mentalFortress:
+                return False
             return True
     # !=
     def __ne__(self, other):
@@ -295,7 +316,10 @@ class WatcherState:
         return other < self
     
     def __hash__(self):
-        return hash((self.stance, self.nMiracles, self.nProtects, self.nSafeties))
+        return hash((self.stance, self.nMiracles, 
+        self.nProtects, self.nSafeties, 
+        self.nCrescendoes, self.nTraquilities, 
+        self.likeWater, self.mentalFortress))
     def __str__(self):
         out = STANCE_NAMES[self.stance.value]
         if self.nMiracles:
@@ -308,7 +332,11 @@ class WatcherState:
             out += ', ' + str(self.nCrescendoes) + ' crescendo(es)'
         if self.nTraquilities:
             out += ', ' + str(self.nTraquilities) + ' tranquilit(y/ies)'
-        return out
+        if self.likeWater:
+            out += ', ' + str(self.likeWater) + ' like water'
+        if self.mentalFortress:
+            out += ', ' + str(self.mentalFortress) + ' mental fortress'
+        return out 
 
 #ws1 = WatcherState()
 #ws2 = WatcherState()
@@ -593,6 +621,13 @@ class HandResult:
     @property
     def buffGain(self):
         return self._buffGain
+    
+    @property
+    def endBlock(self):
+        if self.watcherState.stance == Stance.CALM:
+            return self.block + self.watcherState.likeWater
+        return self.block
+    
     #@property
     #def E(self):
     #    return self._E
@@ -602,11 +637,11 @@ class HandResult:
     
     def __hash__(self):
         return hash((self.discardOrder, self.watcherState,
-        self.block, self.damage, self.buffGain
+        self.endBlock, self.damage, self.buffGain
         ))
     
     def __str__(self):
-        out = f'block/damage/buffGain = {self.block}/{self.damage}/{self.buffGain}; '
+        out = f'block/damage/buffGain = {self.endBlock}/{self.damage}/{self.buffGain}; '
         out += str(self.watcherState)
         out += '; discard = [' + ', '.join([CARD_NAMES[card.value] for card in self.discardOrder])
         out += ']; played = [' + ', '.join([CARD_NAMES[card.value] for card in self.playList]) + ']'
@@ -616,7 +651,7 @@ class HandResult:
     def __le__(self, other):
         if self.discardOrder == other.discardOrder:
             if self.watcherState <= other.watcherState:
-                if self.block > other.block:
+                if self.endBlock > other.endBlock:
                     return False
                 if self.damage > other.damage:
                     return False
@@ -633,7 +668,7 @@ class HandResult:
     def __eq__(self, other):
         if self.discardOrder == other.discardOrder:
             if self.watcherState == other.watcherState:
-                if self.block != other.block:
+                if self.endBlock != other.endBlock:
                     return False
                 if self.damage != other.damage:
                     return False
@@ -777,8 +812,12 @@ class HandManager:
             # retain decrement
             nProtects = currResult.watcherState.nProtects
             nSafeties = currResult.watcherState.nSafeties
+            
             nCrescendoes = currResult.watcherState.nCrescendoes
             nTraquilities = currResult.watcherState.nTraquilities
+            
+            likeWater = currResult.watcherState.likeWater
+            mentalFortress = currResult.watcherState.mentalFortress
             
             if card == Card.PROTECT:
                 nProtects -= 1
@@ -841,12 +880,23 @@ class HandManager:
                 if stance == Stance.CALM:
                     currE += 2
                 stance = Stance.WRATH
+                nCrescendoes -= 1
             elif card == Card.TRANQUILITY:
                 stance = Stance.CALM
+                nTraquilities -= 1
+            elif card == Card.LIKE_WATER:
+                likeWater += 5
+            elif card == Card.MENTAL_FORTRESS:
+                mentalFortress += 4
             
             newWatcher = WatcherState(stance = stance, nMiracles = nMiracles,
             nProtects = nProtects, nSafeties = nSafeties, 
-            nCrescendoes = nCrescendoes, nTraquilities = nTraquilities)
+            nCrescendoes = nCrescendoes, nTraquilities = nTraquilities, 
+            likeWater = likeWater, mentalFortress = mentalFortress)
+            
+            # block from Mental Fortress buff
+            if stance != currResult.watcherState.stance:
+                block += newWatcher.mentalFortress
             
             newResult = HandResult(newHandList, newPlayList, newWatcher , 
             block, damage, newBuffGain)
@@ -1159,7 +1209,7 @@ class StateManager:
                     if self._verbose:
                         discardString = ', '.join([CARD_NAMES[card.value] for card in out.discardOrder]) + ']'
                         print("    result =", discardString, out.watcherState, 
-                        (out.block, out.damage, out.buffGain), out.playOrder, "...")
+                        (out.endBlock, out.damage, out.buffGain), out.playOrder, "...")
                     
                     # out = (discardOrder, endWatcherState, damage, block, buffGain)
                     nextPos = CardPositions(draw = currPos.draw, hand = [], 
@@ -1181,7 +1231,7 @@ class StateManager:
                                 lostHP *= 3
                             else:
                                 lostHP = int(1.5*lostHP)
-                        lostHP -= out.block
+                        lostHP -= out.endBlock
                         if lostHP < 0:
                             lostHP = 0
                         nextCS = CombatState(pHP = cs.pHP - lostHP, 
@@ -1250,12 +1300,13 @@ class StateManager:
 MY_DECK = tuple([Card.ASCENDERS_BANE]*1+[Card.STRIKE]*4+[Card.DEFEND]*4
 +[Card.ERUPTION,Card.VIGILANCE]
 +[Card.NONE]*0
-+[Card.HALT]*1
++[Card.HALT]*0
 +[Card.PROTECT]*0
 +[Card.EMPTY_BODY]*0
 +[Card.DECEIVE_REALITY]*0
 +[Card.CRESCENDO]*0
 +[Card.TRANQUILITY]*0
++[Card.LIKE_WATER]*1
 )
 
 hm2 = HandManager(MY_DECK)
