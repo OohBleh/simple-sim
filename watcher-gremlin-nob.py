@@ -38,11 +38,14 @@ class Card(Enum):
     PROTECT = 8
     DECEIVE_REALITY = 9
     SAFETY = 10
+    
+    def __str__(self):
+        return CARD_NAMES[self.value]
 
 ALL_CARDS = [Card.NONE, Card.STRIKE, Card.DEFEND, Card.ERUPTION, Card.VIGILANCE, Card.ASCENDERS_BANE, 
 Card.HALT, Card.EMPTY_BODY, Card.PROTECT, Card.DECEIVE_REALITY, Card.SAFETY]
-CARD_NAMES = ['none', 'S', 'D', 'E', 'V', 'A', 
-'H', 'Eb', 'Pr', 'Dr', 'Sf']
+CARD_NAMES = ['none', 'Strike', 'Defend', 'Eruption', 'Vigilance', 'A. Bane', 
+'Halt', 'E. Body', 'Protect', 'D. Reality', 'Safety']
 
 UNPLAYABLES = set([Card.NONE, Card.ASCENDERS_BANE])
 ETHEREALS = set([Card.ASCENDERS_BANE])
@@ -106,15 +109,15 @@ class CardPositions:
         return hash((self.draw, self.hand, self.discard))
     
     def __str__(self):
-        out = ''
-        for card in self.draw:
-            out += CARD_NAMES[card.value]
-        out += '|'
-        for card in self.hand:
-            out += CARD_NAMES[card.value]
-        out += '|'
-        for card in self.discard:
-            out += CARD_NAMES[card.value]
+        out = ', '.join([CARD_NAMES[card.value] for card in self.draw])
+        #for card in self.draw:
+        #    out += CARD_NAMES[card.value]
+        out += '|' + ', '.join([CARD_NAMES[card.value] for card in self.hand])
+        #for card in self.hand:
+        #    out += CARD_NAMES[card.value]
+        out += '|' + ', '.join([CARD_NAMES[card.value] for card in self.discard])
+        #for card in self.discard:
+        #    out += CARD_NAMES[card.value]
         return out
     
     # apply a permutation to get the next hand
@@ -275,11 +278,11 @@ class WatcherState:
     def __str__(self):
         out = STANCE_NAMES[self.stance.value]
         if self.nMiracles:
-            out += ',' + str(self.nMiracles) + ' miracle(s)'
+            out += ', ' + str(self.nMiracles) + ' miracle(s)'
         if self.nProtects:
-            out += ',' + str(self.nProtects) + ' protects(s)'
+            out += ', ' + str(self.nProtects) + ' protects(s)'
         if self.nSafeties:
-            out += ',' + str(self.nSafeties) + ' safet(y/ies)'
+            out += ', ' + str(self.nSafeties) + ' safet(y/ies)'
         return out
 
 #ws1 = WatcherState()
@@ -578,10 +581,10 @@ class HandResult:
         ))
     
     def __str__(self):
-        out = f'block/damage/buffGain = {self.block}/{self.damage}/{self.buffGain}'
+        out = f'block/damage/buffGain = {self.block}/{self.damage}/{self.buffGain}; '
         out += str(self.watcherState)
-        out += '; discard = ' + str(self.discardOrder)
-        out += '; played = ' + str(self.playList)
+        out += '; discard = [' + ', '.join([CARD_NAMES[card.value] for card in self.discardOrder])
+        out += ']; played = [' + ', '.join([CARD_NAMES[card.value] for card in self.playList]) + ']'
         return out
     
     # <= 
@@ -713,6 +716,8 @@ class HandManager:
         for i in range(len(handAndRetains)):
             
             card = handAndRetains[i]
+            if card in UNPLAYABLES:
+                continue
             
             # deal with energy... 
             mNeeded = max(0, COSTS[card] - E)
@@ -1093,9 +1098,7 @@ class StateManager:
                     #   playOrder (permutation of card order played)
                     
                     if self._verbose:
-                        discardString = ''
-                        for card in out.discardOrder:
-                            discardString += CARD_NAMES[card.value]
+                        discardString = ', '.join([CARD_NAMES[card.value] for card in out.discardOrder]) + ']'
                         print("    result =", discardString, out.endWatcher, 
                         (out.block, out.damage, out.buffGain), out.playOrder, "...")
                     
@@ -1193,6 +1196,10 @@ MY_DECK = tuple([Card.ASCENDERS_BANE]*1+[Card.STRIKE]*4+[Card.DEFEND]*4
 +[Card.EMPTY_BODY]*0
 +[Card.DECEIVE_REALITY]*0
 )
+
+hm2 = HandManager(MY_DECK)
+hm2.allResults()
+
 #HANDS = memorizeHands(myDeck = START_DECK)
 HANDS = memorizeHands(myDeck = MY_DECK)
 #hsize = 0
