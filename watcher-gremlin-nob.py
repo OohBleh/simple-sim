@@ -1064,6 +1064,7 @@ class StateManager:
         self._makeGraph = makeGraph
         self._winStates = dict()
         self._winStats = set()
+        self._requiredHP = (None, None, None)
         
         if shuffles is None:
             #self._shuffler = random.Random()
@@ -1124,6 +1125,9 @@ class StateManager:
     @property
     def winStates(self):
         return self._winStates
+    @property
+    def requiredHP(self):
+        return self._requiredHP
     
     def setWinnable(self, value):
         self._winnable = value
@@ -1147,10 +1151,31 @@ class StateManager:
     
     def updateWinStats(self):
         self._winStats = set()
+        
+        hp106, hp109, hp112 = self._requiredHP
+        
         for winState in self._winStates:
             if self._winStates[winState]:
                 self._winStats.add((winState.combatState.pHP, winState.combatState.gnHP))
-    
+                reqHP = 62 - winState.combatState.pHP
+                dam = 106 - winState.combatState.gnHP
+                
+                if hp106 is None:
+                    hp106 = reqHP
+                else:
+                    hp106 = min(hp106, reqHP)
+                if dam >= 109:
+                    if hp109 is None:
+                        hp109 = reqHP
+                    else:
+                        hp109 = min(hp109, reqHP)
+                    if dam >= 112:
+                        if hp112 is None:
+                            hp112 = reqHP
+                        else:
+                            hp112 = min(hp112, reqHP)
+        self._requiredHP = (hp106, hp109, hp112)
+        
     def getWinPath(self):
         if self.winnable and self._makeGraph:
             maxHP = max([winState.combatState.pHP for winState in self.winStates])
@@ -1306,7 +1331,8 @@ MY_DECK = tuple([Card.ASCENDERS_BANE]*1+[Card.STRIKE]*4+[Card.DEFEND]*4
 +[Card.DECEIVE_REALITY]*0
 +[Card.CRESCENDO]*0
 +[Card.TRANQUILITY]*0
-+[Card.LIKE_WATER]*1
++[Card.LIKE_WATER]*0
++[Card.MENTAL_FORTRESS]*0
 )
 
 hm2 = HandManager(MY_DECK)
@@ -1327,6 +1353,71 @@ hm2 = HandManager(MY_DECK)
 #print("len(HANDS) =", len(HANDS), "size =", hsize)
 
 #HANDS = dict()
+
+
+class basicHistogram:
+    def __init__(self):
+        self._mults = dict()
+        self._minHP = 62
+        self._mults[62] = [0,0,0]
+    
+    def add(self, requiredHP):
+        hp106, hp109, hp112 = requiredHP
+        if hp106 is None:
+            return
+        if hp106 < self._minHP:
+            for hp in range(hp106, self._minHP):
+                self._mults[hp] = [0,0,0]
+            self._minHP = hp106
+        
+        for hp in range(hp106, 63):
+            self._mults[hp][0] += 1
+        
+        if hp109 is None:
+            return
+        for hp in range(hp109, 63):
+            self._mults[hp][1] += 1
+        
+        if hp112 is None:
+            return
+        for hp in range(hp112, 63):
+            self._mults[hp][2] += 1
+        
+    def show(self):
+        currOut = None
+        currLHS = None
+        for hp in range(self._minHP, 63):
+            out = 'x'*(self._mults[hp][0]-self._mults[hp][1])
+            out += 'y'*(self._mults[hp][1]-self._mults[hp][2])
+            out += 'z'*self._mults[hp][2]
+            
+            if currOut is None:
+                currOut = out
+                currLHS = hp
+            
+            if out != currOut:
+                if currLHS == hp-1:
+                    prefix = str(currLHS)
+                else:
+                    prefix = str(currLHS) + '..' + str(hp-1)
+                print(prefix + ':\t' + currOut)
+                currOut = out
+                currLHS = hp
+            #print(out)
+        
+        if out == currOut:
+            if currLHS == 62:
+                prefix = str(62)
+            else:
+                prefix = str(currLHS) + '..' + str(62)
+            print(prefix + ':\t' + currOut)
+        else:
+            if currLHS == 61:
+                print('61:\t' + currOut)
+            else:
+                print(str(currLHS) + '..61' + ':\t' + currOut)
+            print('62:\t' + currOut)
+            
 
 def testShuffle(shuffles, pHP = 61, gnHP = 106, startDeck = MY_DECK):
     sm = StateManager(pHP = pHP, gnHP = gnHP, verbose = False, startDeck = startDeck, 
@@ -1352,6 +1443,8 @@ def sampleSim(nTrials = 100, pHP = 61, gnHP = 106, verbose = False, startDeck = 
     nWins = 0
     curr = 0
     winStats = dict()
+    hpHisto = basicHistogram()
+    minHP, maxHP = 62, 62
     while curr < nTrials:
         sm = StateManager(pHP = pHP, gnHP = gnHP, verbose = verbose, startDeck = startDeck, makeGraph = False)
         #print("turn 0 states:", sm.numStates)
@@ -1383,12 +1476,19 @@ def sampleSim(nTrials = 100, pHP = 61, gnHP = 106, verbose = False, startDeck = 
                     print(elt)
             
         curr += 1
+        hp106, hp109, hp112 = sm.requiredHP
+        if not (hp106 is None):
+            print("reqHP =", hp106, hp109, hp112)
+            hpHisto.add(sm.requiredHP)
+        
         
         if curr % 10 == 0:
             print(nWins, "out of", curr, ":", nWins/curr, "; win stats =")
             for winStat in winStats:
                 print("\t", winStats[winStat], "times", winStat)
             print("len/size of hm2 =", len(hm2), hm2.size())
+            
+            hpHisto.show()
     
     print()
     return nWins
