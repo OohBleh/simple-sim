@@ -45,6 +45,8 @@ class Card(Enum):
     LIKE_WATER = auto()
     MENTAL_FORTRESS = auto()
     
+    PROSTRATE = auto()
+    
     def __str__(self):
         return CARD_NAMES[self.value]
 
@@ -53,7 +55,8 @@ Card.ASCENDERS_BANE, Card.HALT, Card.EMPTY_BODY, Card.PROTECT, Card.DECEIVE_REAL
 Card.SAFETY, Card.CRESCENDO, Card.TRANQUILITY, Card.LIKE_WATER, Card.MENTAL_FORTRESS]
 CARD_NAMES = ['none', 'Strike', 'Defend', 'Eruption', 'Vigilance', 
 'A. Bane', 'Halt', 'E. Body', 'Protect', 'D. Reality', 
-'Safety', 'Crescendo', 'Tranquility', 'Like Water', 'Mental Fortress']
+'Safety', 'Crescendo', 'Tranquility', 'Like Water', 'Mental Fortress', 
+'Prostrate']
 
 UNPLAYABLES = set([Card.NONE, Card.ASCENDERS_BANE])
 ETHEREALS = set([Card.ASCENDERS_BANE])
@@ -61,7 +64,7 @@ EXHAUSTS = set([Card.SAFETY, Card.CRESCENDO, Card.TRANQUILITY])
 RETAINS = set([Card.PROTECT, Card.SAFETY, Card.CRESCENDO, Card.TRANQUILITY])
 
 COSTS = dict()
-for card in [Card.HALT]:
+for card in [Card.HALT, Card.PROSTRATE]:
     COSTS[card] = 0
 for card in [Card.STRIKE, Card.DEFEND, Card.EMPTY_BODY, Card.DECEIVE_REALITY, Card.SAFETY, 
 Card.CRESCENDO, Card.TRANQUILITY, Card.LIKE_WATER, Card.MENTAL_FORTRESS]:
@@ -73,7 +76,7 @@ ATTACKS[Card.STRIKE] = 6
 ATTACKS[Card.ERUPTION] = 9
 
 SKILLS = set([Card.DEFEND, Card.VIGILANCE, Card.HALT, Card.EMPTY_BODY, Card.PROTECT, 
-Card.DECEIVE_REALITY, Card.SAFETY])
+Card.DECEIVE_REALITY, Card.SAFETY, Card.PROSTRATE])
 
 BLOCKS = dict()
 BLOCKS[Card.DEFEND] = 5
@@ -83,6 +86,7 @@ BLOCKS[Card.EMPTY_BODY] = 7
 BLOCKS[Card.PROTECT] = 12
 BLOCKS[Card.DECEIVE_REALITY] = 4
 BLOCKS[Card.SAFETY] = 12
+BLOCKS[Card.PROSTRATE] = 4
 
 POWERS = set([Card.LIKE_WATER, Card.MENTAL_FORTRESS])
 
@@ -1324,7 +1328,7 @@ class StateManager:
 
 MY_DECK = tuple([Card.ASCENDERS_BANE]*1+[Card.STRIKE]*4+[Card.DEFEND]*4
 +[Card.ERUPTION,Card.VIGILANCE]
-+[Card.NONE]*0
++[Card.NONE]*2
 +[Card.HALT]*0
 +[Card.PROTECT]*0
 +[Card.EMPTY_BODY]*0
@@ -1333,6 +1337,7 @@ MY_DECK = tuple([Card.ASCENDERS_BANE]*1+[Card.STRIKE]*4+[Card.DEFEND]*4
 +[Card.TRANQUILITY]*0
 +[Card.LIKE_WATER]*0
 +[Card.MENTAL_FORTRESS]*0
++[Card.PROSTRATE]*0
 )
 
 hm2 = HandManager(MY_DECK)
@@ -1459,17 +1464,12 @@ def sampleSim(nTrials = 100, pHP = 61, gnHP = 106, verbose = False, startDeck = 
             out = list(sm.winStats)
             out.sort()
             out = tuple(out)
-            #print("sm.winStates =")
-            #for winState in sm.winStates:
-            #    if sm.winStates[winState]:
-            #        print("\t", winState)
-            #print("out =", out, "sm.winStats =", sm.winStats)
+            
             if out in winStats:
                 winStats[out] += 1
             else:
                 winStats[out] = 1
             
-            #maxHP = max([mult[0] for mult in out])
             myPath = sm.getWinPath()
             if not (myPath is None):
                 for elt in myPath:
@@ -1484,8 +1484,8 @@ def sampleSim(nTrials = 100, pHP = 61, gnHP = 106, verbose = False, startDeck = 
         
         if curr % 10 == 0:
             print(nWins, "out of", curr, ":", nWins/curr, "; win stats =")
-            for winStat in winStats:
-                print("\t", winStats[winStat], "times", winStat)
+            #for winStat in winStats:
+            #    print("\t", winStats[winStat], "times", winStat)
             print("len/size of hm2 =", len(hm2), hm2.size())
             
             hpHisto.show()
@@ -1495,7 +1495,7 @@ def sampleSim(nTrials = 100, pHP = 61, gnHP = 106, verbose = False, startDeck = 
 
 if True:
     NTRIALS = 1000
-    conditions = [(NTRIALS, 61, 106)] #, (NTRIALS, 56, 106)]
+    conditions = [(NTRIALS, 61, 106)]
 
     results = dict()
     print()
